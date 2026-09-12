@@ -62,13 +62,13 @@ button,input,select,textarea{font:inherit;color:inherit}
 ::selection{background:var(--accent);color:var(--accent-ink)}
 
 /* ── shell ──────────────────────────────────────────────────────────── */
-.shell{display:grid;grid-template-rows:auto 1fr;height:100dvh;min-height:520px}
+.shell{position:relative;display:grid;grid-template-rows:auto 1fr;grid-template-columns:minmax(0,1fr);height:100dvh;min-height:520px}
 .topbar{
-  display:flex;align-items:center;gap:18px;padding:0 16px;height:54px;
+  display:flex;align-items:center;gap:18px;padding:0 16px;height:54px;min-width:0;
   border-bottom:1px solid var(--line);background:var(--surface);
 }
-.brand{display:flex;align-items:baseline;gap:10px;min-width:0}
-.brand h1{font-size:19px;line-height:1;white-space:nowrap}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:0;overflow:hidden}
+.brand h1{font-size:19px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand .sub{
   font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -85,8 +85,10 @@ button,input,select,textarea{font:inherit;color:inherit}
   font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;
 }
 .iconbtn:hover{border-color:var(--accent);color:var(--accent)}
+.only-mobile{display:none}
 
 .body{display:grid;grid-template-columns:var(--rail) minmax(0,1fr) var(--dossier);min-height:0}
+.rail,.stage,.dossier{min-width:0}
 
 /* ── index rail ─────────────────────────────────────────────────────── */
 .rail{
@@ -289,7 +291,8 @@ code,.m{font-family:var(--mono);font-size:.88em;background:var(--surface-2);padd
 .num b{font-family:var(--mono);font-size:17px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--accent)}
 .num span{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
 .num i{font-family:var(--serif);font-style:italic;font-size:12.5px;color:var(--ink-2);line-height:1.4}
-.testtable{width:100%;border-collapse:collapse;font-size:13px}
+.tablewrap{overflow-x:auto}
+.testtable{width:100%;min-width:280px;border-collapse:collapse;font-size:13px}
 .testtable th{
   text-align:left;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);
   border-bottom:1px solid var(--line-2);padding:0 8px 6px 0;font-weight:700;
@@ -346,11 +349,45 @@ textarea.notes{
 @media (max-width:1320px){.hint{display:none}}
 @media (max-width:1180px){:root{--rail:230px;--dossier:360px}}
 @media (max-width:960px){
-  .body{grid-template-columns:1fr;grid-template-rows:auto minmax(280px,44vh) minmax(0,1fr)}
-  .rail{border-right:0;border-bottom:1px solid var(--line);max-height:40vh}
-  .rail.collapsed .tree,.rail.collapsed .railhead{display:none}
+  .only-mobile{display:inline-block;margin-left:auto}
+  .modes{margin-left:0}
+  .brand .sub{display:none}
+  .topbar{gap:8px;padding:0 10px}
+  .modes button{padding:5px 9px;font-size:10px}
+  .body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(240px,42vh) minmax(0,1fr)}
+  .rail{position:absolute;inset:54px 0 0 0;z-index:30;display:none;border-right:0;box-shadow:var(--shadow)}
+  .rail.open{display:flex}
   .dossier{border-left:0;border-top:1px solid var(--line)}
-  .hint{display:none}
+  .hint,.keys{display:none}
+  .instr{left:8px;right:8px;bottom:10px;transform:none;max-width:none}
+  .cell{padding:6px 10px}
+  .cell input[type=range]{width:86px}
+  .readout .now{font-size:18px}
+  .readout{max-width:70%}
+  .legend{display:none!important}
+  .pane{padding:18px 16px 70px}
+  .nav button{width:34px;height:30px;font-size:13px}
+  .item{padding:9px 14px 9px 26px}
+  .item.sub{padding-left:34px}
+  .grp>summary{padding:12px 14px}
+  .views button{padding:6px 8px}
+  .chk{padding:2px 0}
+}
+@media (max-width:520px){
+  .brand h1{font-size:16px}
+  .topbar{gap:6px;padding:0 8px}
+  .iconbtn{padding:0 8px;font-size:10px}
+  .modes{padding:1px}
+  .modes button{padding:5px 7px;letter-spacing:.05em}
+  .dhead{padding:12px 14px 0}
+  .dhead h2{font-size:22px}
+  .tagline{font-size:14.5px;margin:7px 0 10px}
+  .dbody{padding:14px 14px 56px}
+  ul.facts li{font-size:14.5px}
+  .testtable td:first-child{width:42%}
+  .nums{grid-template-columns:repeat(auto-fit,minmax(112px,1fr))}
+  .quiz{padding:14px}
+  .qstem{font-size:16.5px}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
 </style>
@@ -362,6 +399,7 @@ textarea.notes{
       <h1>Encephalon Atlas</h1>
       <span class="sub">Structure &middot; circuit &middot; function &middot; measurement</span>
     </div>
+    <button class="iconbtn only-mobile" id="railtoggle" aria-expanded="false">Index</button>
     <nav class="modes" role="group" aria-label="Mode">
       <button id="m-explore" aria-pressed="true">Atlas</button>
       <button id="m-learn" aria-pressed="false">Course</button>
@@ -373,7 +411,7 @@ textarea.notes{
   <div class="body" id="body">
     <aside class="rail" id="rail">
       <div class="railhead">
-        <input class="search" id="q" type="search" placeholder="Search structure, tract, test, syndrome…" autocomplete="off">
+        <input class="search" id="q" type="search" aria-label="Search structures, tracts, tests and syndromes" placeholder="Search structure, tract, test, syndrome…" autocomplete="off">
         <div class="progressline"><span id="pcount">0 / 0 studied</span><span class="bar"><i id="pbar"></i></span></div>
       </div>
       <div class="tree" id="tree"></div>

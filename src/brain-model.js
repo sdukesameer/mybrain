@@ -12,7 +12,7 @@ window.BRAIN = (function () {
   let cb = {};
   let rot = { az: 0.72, el: 0.17 }, dist = 3.0, target = new T.Vector3(0, -0.04, 0);
   let want = { az: 0.72, el: 0.17, dist: 3.0, target: new T.Vector3(0, -0.04, 0) };
-  let spinning = true, lastInput = 0, failed = false, needsRender = true, ready = false, fit = 1;
+  let spinning = true, lastInput = 0, failed = false, needsRender = true, ready = false, fit = 1, lastClip = null;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* ── noise ──────────────────────────────────────────────────────── */
@@ -45,16 +45,16 @@ window.BRAIN = (function () {
   // Folding field: returns [displacement, crown-to-sulcus factor 0..1]
   function fold(px, py, pz) {
     // anisotropy elongates folds antero-posteriorly, as real gyri do
-    const wx = px * 9.8, wy = py * 11.6, wz = pz * 3.5;
+    const wx = px * 8.4, wy = py * 10.0, wz = pz * 3.2;
     const w = fbm2(wx * 0.42 + 31, wy * 0.42, wz * 0.42) * 0.55;   // domain warp
     const n1 = fbm2(wx + w, wy + w * 0.7, wz - w);
-    const n2 = fbm2(px * 19.0 + 9, py * 21.0, pz * 8.5);
+    const n2 = fbm2(px * 17.0 + 9, py * 19.0, pz * 8.0);
     const n3 = noise(px * 33, py * 33, pz * 33);
     // narrow deep valleys along the zero-set of n1, broad crowns between
-    const ridge = 2 * Math.pow(Math.abs(n1), 0.62) - 1;            // -1 sulcus … +1 crown
+    const ridge = 2 * Math.pow(Math.abs(n1), 0.48) - 1;            // -1 sulcus … +1 crown
     const fine = 2 * Math.pow(Math.abs(n2), 0.7) - 1;
-    const d = ridge * 0.062 + fine * 0.019 + n3 * 0.004;
-    const t = Math.max(0, Math.min(1, (ridge * 0.8 + fine * 0.2 + 1) / 2));
+    const d = ridge * 0.064 + fine * 0.0095 + n3 * 0.0015;
+    const t = Math.max(0, Math.min(1, (ridge * 0.88 + fine * 0.12 + 1) / 2));
     return [d, t];
   }
 
@@ -96,10 +96,10 @@ window.BRAIN = (function () {
     const g = (d, w) => Math.exp(-(d * d) / (w * w));
     let crease = 0;
     const syl = sylvian(ez);
-    if (ey > syl - 0.03) crease += g(ez - (0.22 - 0.45 * ey), 0.032) * 0.052;      // central sulcus
-    if (ez > -0.52 && ez < 0.55) crease += g(ey - (syl - 0.135), 0.030) * 0.038;   // superior temporal
-    if (ez < 0.05 && ez > -0.72 && ey > 0.05) crease += g(ey - 0.30, 0.034) * 0.030; // intraparietal
-    crease += g(ey - syl, 0.024) * 0.046;                                          // Sylvian proper
+    if (ey > syl - 0.03) crease += g(ez - (0.22 - 0.45 * ey), 0.042) * 0.050;      // central sulcus
+    if (ez > -0.52 && ez < 0.55) crease += g(ey - (syl - 0.135), 0.040) * 0.038;   // superior temporal
+    if (ez < 0.05 && ez > -0.72 && ey > 0.05) crease += g(ey - 0.30, 0.044) * 0.030; // intraparietal
+    crease += g(ey - syl, 0.034) * 0.048;                                          // Sylvian proper
 
     const f = fold(px, py, pz);
     const len = Math.hypot(ex, ey, ez) || 1;
@@ -108,11 +108,18 @@ window.BRAIN = (function () {
   }
 
   const LOBE_COL = { frontal: 0xa07cc4, parietal: 0x3f93a4, temporal: 0xc08347, occipital: 0x5c6cae };
-  const TISSUE_HI = new T.Color(0xc0a196), TISSUE_LO = new T.Color(0x4a3634);
+  const TISSUE_HI = new T.Color(0xeda096), TISSUE_MID = new T.Color(0x9c4a4b), TISSUE_LO = new T.Color(0x150f10);
   const mats = [];
 
+  function gridSize() {
+    const q = parseInt(new URLSearchParams(location.search).get('res') || '', 10);
+    if (q && q >= 40 && q <= 320) return [q, Math.round(q * 0.7)];
+    const small = Math.min(innerWidth, innerHeight) <= 700 || navigator.hardwareConcurrency <= 4;
+    return small ? [156, 108] : [240, 166];
+  }
+
   function buildCortexGeometries(onStep, done) {
-    const W = 214, H = 148;
+    const gs = gridSize(), W = gs[0], H = gs[1];
     const verts = [], folds = [], key2i = new Map(), gp = [];
     const kk = (x, y, z) => (Math.round(x * 3000) + '|' + Math.round(y * 3000) + '|' + Math.round(z * 3000));
     let j = 0;
@@ -166,7 +173,9 @@ window.BRAIN = (function () {
         const tissue = [], tint = [], lc = new T.Color(LOBE_COL[n]), c1 = new T.Color(), c2 = new T.Color();
         for (let v = 0; v < L.fold.length; v++) {
           const t = L.fold[v], e = 0.28 + 0.72 * Math.pow(t, 1.1);
-          c1.copy(TISSUE_LO).lerp(TISSUE_HI, Math.pow(t, 1.25));
+          // two-stage ramp: sulcal line → rose flank → salmon crown
+          const a = Math.min(1, t / 0.42), b = Math.max(0, (t - 0.40) / 0.60);
+          c1.copy(TISSUE_LO).lerp(TISSUE_MID, a * a * (3 - 2 * a)).lerp(TISSUE_HI, b * b * (3 - 2 * b));
           tissue.push(c1.r, c1.g, c1.b);
           c2.copy(lc).multiplyScalar(e * 1.12);
           tint.push(Math.min(1, c2.r), Math.min(1, c2.g), Math.min(1, c2.b));
@@ -187,11 +196,11 @@ window.BRAIN = (function () {
     opt = opt || {};
     const Mat = opt.tissue ? T.MeshPhysicalMaterial : T.MeshStandardMaterial;
     const mat = new Mat({
-      color: color, roughness: opt.rough != null ? opt.rough : 0.62, metalness: 0.0,
+      color: color, roughness: opt.rough != null ? opt.rough : 0.55, metalness: 0.0,
       transparent: false, opacity: 1, side: T.DoubleSide,
       vertexColors: !!opt.tissue, emissive: new T.Color(0x000000)
     });
-    if (opt.tissue) { mat.clearcoat = 0.22; mat.clearcoatRoughness = 0.62; }
+    if (opt.tissue) { mat.clearcoat = 0.38; mat.clearcoatRoughness = 0.45; mat.sheen = 0.2; }
     mat.userData.base = { color: color, opacity: opt.opacity != null ? opt.opacity : 1 };
     mat.opacity = mat.userData.base.opacity;
     mats.push(mat);
@@ -248,8 +257,8 @@ window.BRAIN = (function () {
 
   /* ── the model ──────────────────────────────────────────────────── */
   function buildRest() {
-    both(s => blob('insula', 0xb4628f, [s * 0.44, -0.02, 0.04], [0.05, 0.17, 0.22], [0, 0, s * 0.1]));
-    both(s => tube('cingulate', 0x7fa37a, [
+    both(s => blob('insula', 0xc2707f, [s * 0.44, -0.02, 0.04], [0.05, 0.17, 0.22], [0, 0, s * 0.1]));
+    both(s => tube('cingulate', 0xcf8f86, [
       [s * 0.075, -0.12, 0.42], [s * 0.075, 0.16, 0.50], [s * 0.075, 0.40, 0.30],
       [s * 0.075, 0.45, 0.0], [s * 0.075, 0.38, -0.32], [s * 0.075, 0.20, -0.54], [s * 0.075, 0.02, -0.60]
     ], 0.06, { flatx: 0.45, rad: 14 }));
@@ -261,7 +270,7 @@ window.BRAIN = (function () {
     sh.moveTo(prof[0][0], prof[0][1]);
     prof.slice(1).forEach(p => sh.lineTo(p[0], p[1]));
     sh.closePath();
-    const cc = mesh(new T.ExtrudeGeometry(sh, { depth: 0.19, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.012, bevelSegments: 2, curveSegments: 8 }), 0xe3dbe9, { key: 'cc', rough: 0.5 });
+    const cc = mesh(new T.ExtrudeGeometry(sh, { depth: 0.19, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.012, bevelSegments: 2, curveSegments: 8 }), 0xf6e7dc, { key: 'cc', rough: 0.45 });
     cc.rotation.y = Math.PI / 2; cc.position.x = -0.095;
 
     both(s => blob('thalamus', 0xc7a15a, [s * 0.135, 0.12, -0.06], [0.10, 0.105, 0.175], [0, s * -0.22, 0]));
@@ -286,11 +295,11 @@ window.BRAIN = (function () {
     both(s => blob('accumbens', 0xc9746b, [s * 0.165, -0.095, 0.25], [0.058, 0.052, 0.062]));
     both(s => blob('basalforebrain', 0xa08fc0, [s * 0.17, -0.175, 0.17], [0.052, 0.036, 0.058]));
 
-    both(s => tube('fornix', 0xcfc6de, [
+    both(s => tube('fornix', 0xf0e2d8, [
       [s * 0.19, 0.05, -0.37], [s * 0.14, 0.25, -0.28], [s * 0.085, 0.31, -0.04],
       [s * 0.065, 0.16, 0.13], [s * 0.06, -0.08, 0.06], [s * 0.055, -0.155, -0.01]
     ], 0.02, { rad: 12 }));
-    both(s => blob('fornix', 0xd8cfe4, [s * 0.055, -0.17, -0.015], [0.034, 0.03, 0.034], null, { pick: false }));
+    both(s => blob('fornix', 0xf3e7dd, [s * 0.055, -0.17, -0.015], [0.034, 0.03, 0.034], null, { pick: false }));
 
     both(s => tube('arcuate', 0xe0c07a, [
       [s * 0.40, -0.18, -0.28], [s * 0.445, 0.04, -0.32], [s * 0.46, 0.24, -0.18],
@@ -299,7 +308,7 @@ window.BRAIN = (function () {
     both(s => tube('uncinate', 0xd08c6a, [
       [s * 0.33, -0.28, 0.40], [s * 0.355, -0.20, 0.52], [s * 0.32, -0.25, 0.62], [s * 0.24, -0.31, 0.66]
     ], 0.024, { rad: 12 }));
-    both(s => tube('internal_capsule', 0xc9c2d6, [
+    both(s => tube('internal_capsule', 0xeaddd4, [
       [s * 0.245, 0.25, 0.14], [s * 0.25, 0.10, 0.01], [s * 0.215, -0.08, -0.06], [s * 0.175, -0.24, -0.07]
     ], t => 0.05 - 0.014 * t, { rad: 14, flatx: 0.55 }));
 
@@ -308,11 +317,11 @@ window.BRAIN = (function () {
       [s * 0.16, 0.24, -0.26], [s * 0.19, 0.05, -0.40], [s * 0.25, -0.14, -0.30], [s * 0.30, -0.22, -0.12]
     ], t => 0.052 - 0.02 * Math.abs(t - 0.5), { rad: 14, opacity: 0.42, rough: 0.2 }));
 
-    tube('midbrain', 0xa79aa6, [[0, 0.03, -0.03], [0, -0.10, 0.0], [0, -0.22, 0.02]], t => 0.135 - 0.008 * t, { rad: 24, seg: 26 });
-    tube('pons', 0xb1a4ae, [[0, -0.22, 0.02], [0, -0.35, 0.035], [0, -0.47, 0.015]], t => 0.145 + 0.04 * Math.sin(Math.PI * t), { rad: 24, seg: 26 });
-    blob('pons', 0xb1a4ae, [0, -0.35, 0.09], [0.145, 0.135, 0.085], null, { pick: false });
-    tube('medulla', 0x9d919c, [[0, -0.47, 0.015], [0, -0.60, -0.01], [0, -0.74, -0.045]], t => 0.105 - 0.035 * t, { rad: 20, seg: 22 });
-    both(s => blob('midbrain', 0x8d8290, [s * 0.06, 0.055, -0.095], [0.05, 0.045, 0.05], null, { pick: false }));
+    tube('midbrain', 0xecd8cb, [[0, 0.03, -0.03], [0, -0.10, 0.0], [0, -0.22, 0.02]], t => 0.135 - 0.008 * t, { rad: 24, seg: 26 });
+    tube('pons', 0xf0ddd1, [[0, -0.22, 0.02], [0, -0.35, 0.035], [0, -0.47, 0.015]], t => 0.145 + 0.04 * Math.sin(Math.PI * t), { rad: 24, seg: 26 });
+    blob('pons', 0xf0ddd1, [0, -0.35, 0.09], [0.145, 0.135, 0.085], null, { pick: false });
+    tube('medulla', 0xe6d0c4, [[0, -0.47, 0.015], [0, -0.60, -0.01], [0, -0.74, -0.045]], t => 0.105 - 0.035 * t, { rad: 20, seg: 22 });
+    both(s => blob('midbrain', 0xd9bfb2, [s * 0.06, 0.055, -0.095], [0.05, 0.045, 0.05], null, { pick: false }));
     both(s => blob('sn', 0x2f8fa3, [s * 0.07, -0.115, 0.04], [0.05, 0.024, 0.06], [0, 0, s * 0.2]));
     tube('raphe', 0xb4628f, [[0, -0.05, -0.01], [0, -0.30, 0.01], [0, -0.55, -0.015]], 0.015, { rad: 10, seg: 22 });
     both(s => blob('lc', 0x4fb3c9, [s * 0.055, -0.375, -0.055], [0.027, 0.032, 0.027]));
@@ -321,7 +330,7 @@ window.BRAIN = (function () {
     both(s => {
       const g = new T.SphereGeometry(1, 60, 42);
       const p = g.attributes.position, col = [];
-      const hi = new T.Color(0xb9a7c6), lo = new T.Color(0x554463), c = new T.Color();
+      const hi = new T.Color(0xd2888a), lo = new T.Color(0xf2e0d4), c = new T.Color();
       for (let i = 0; i < p.count; i++) {
         const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
         const rid = 2 * Math.pow(Math.abs(Math.sin(y * 9.5 + z * 1.1 + noise(x * 3, y * 3, z * 3) * 0.4)), 0.55) - 1;
@@ -345,11 +354,11 @@ window.BRAIN = (function () {
       vp.setXYZ(i, x * f, y * f, z * f);
     }
     vg.computeVertexNormals();
-    const verm = mesh(vg, 0x8d7f9e, { key: 'cerebellum', rough: 0.85, pick: false });
+    const verm = mesh(vg, 0xe9cfc2, { key: 'cerebellum', rough: 0.85, pick: false });
     verm.position.set(0, -0.40, -0.52); verm.scale.set(0.06, 0.14, 0.19);
 
-    both(s => tube('chiasm', 0xd6cee0, [[s * 0.004, -0.21, 0.15], [s * 0.10, -0.22, 0.33]], 0.019, { rad: 10, seg: 10, pick: false }));
-    both(s => tube('olf', 0xd6cee0, [[s * 0.085, -0.30, 0.38], [s * 0.085, -0.32, 0.62]], 0.016, { rad: 10, seg: 10, pick: false }));
+    both(s => tube('chiasm', 0xf2e4da, [[s * 0.004, -0.21, 0.15], [s * 0.10, -0.22, 0.33]], 0.019, { rad: 10, seg: 10, pick: false }));
+    both(s => tube('olf', 0xf2e4da, [[s * 0.085, -0.30, 0.38], [s * 0.085, -0.32, 0.62]], 0.016, { rad: 10, seg: 10, pick: false }));
   }
 
   /* ── appearance ─────────────────────────────────────────────────── */
@@ -404,11 +413,17 @@ window.BRAIN = (function () {
   /* ── overlays & markers ─────────────────────────────────────────── */
   function centroidOf(key) {
     if (failed) return null;
-    const ms = groups[key];
-    if (!ms || !ms.length) return null;
-    const box = new T.Box3();
-    ms.forEach(m => { m.updateMatrixWorld(); box.expandByObject(m); });
-    return box.getCenter(new T.Vector3());
+    const ms = (groups[key] || []).filter(m => m.visible !== false);
+    if (!ms.length) return null;
+    // bilateral structures: label the right-hand instance rather than the midline
+    let best = null, bestX = -Infinity;
+    ms.forEach(m => {
+      m.updateMatrixWorld();
+      const c = new T.Box3().expandByObject(m).getCenter(new T.Vector3());
+      const x = m.scale.x < 0 ? -Math.abs(c.x) - 1 : c.x;
+      if (x > bestX) { bestX = x; best = c; }
+    });
+    return best;
   }
   function bboxOf(key) {
     const ms = groups[key];
@@ -489,6 +504,7 @@ window.BRAIN = (function () {
   function view(name) {
     if (failed) return;
     setHemi(name === 'med' ? 'right' : 'both');
+
     const v = VIEWS[name] || VIEWS.default;
     want.az = v[0]; want.el = v[1]; want.dist = v[2] * fit;
     want.target.set(0, -0.04, 0);
@@ -594,16 +610,16 @@ window.BRAIN = (function () {
     renderer.setClearColor(0x000000, 0);
     renderer.outputEncoding = T.sRGBEncoding;
     renderer.toneMapping = T.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.98;
+    renderer.toneMappingExposure = 1.06;
     renderer.localClippingEnabled = true;
     ray = new T.Raycaster();
 
-    scene.add(new T.HemisphereLight(0xf6eef6, 0x1c1622, 0.48));
-    const d1 = new T.DirectionalLight(0xfff3e8, 0.92); d1.position.set(2.4, 2.6, 2.2); scene.add(d1);
-    const d2 = new T.DirectionalLight(0x9fd0e2, 0.40); d2.position.set(-2.6, -0.4, -1.8); scene.add(d2);
+    scene.add(new T.HemisphereLight(0xfff2ec, 0x2a1f24, 0.52));
+    const d1 = new T.DirectionalLight(0xfff6ee, 0.85); d1.position.set(2.4, 2.6, 2.2); scene.add(d1);
+    const d2 = new T.DirectionalLight(0xc9dcea, 0.34); d2.position.set(-2.6, -0.4, -1.8); scene.add(d2);
     const d3 = new T.DirectionalLight(0xffd9c4, 0.3); d3.position.set(0.6, -2.4, 1.4); scene.add(d3);
-    const rim = new T.DirectionalLight(0xd8b4ff, 0.38); rim.position.set(-1.2, 1.6, -2.6); scene.add(rim);
-    scene.add(new T.AmbientLight(0xffffff, 0.07));
+    const rim = new T.DirectionalLight(0xe8c0d8, 0.34); rim.position.set(-1.2, 1.6, -2.6); scene.add(rim);
+    scene.add(new T.AmbientLight(0xffffff, 0.05));
 
     bind();
     resize();
@@ -653,7 +669,7 @@ window.BRAIN = (function () {
     renderer.setSize(w, h, false);
     cam.aspect = w / h; cam.updateProjectionMatrix();
     const prev = fit;
-    fit = Math.max(0.8, Math.min(2.4, 0.98 / cam.aspect));
+    fit = Math.max(0.88, Math.min(2.6, 1.16 / cam.aspect));
     if (prev !== fit) { want.dist *= fit / prev; dist *= fit / prev; }
     needsRender = true;
   }
@@ -675,8 +691,9 @@ window.BRAIN = (function () {
       cortexMeshes.forEach(m => { m.material.userData.base.opacity = v; });
       paint();
     },
-    clip(axis, t) {
+    clip(axis, t, remember) {
       if (failed) return;
+      if (remember !== false) lastClip = (!axis || axis === 'none') ? null : { axis: axis, t: t };
       if (!axis || axis === 'none') { renderer.clippingPlanes = []; needsRender = true; return; }
       const n = axis === 'x' ? new T.Vector3(-1, 0, 0) : axis === 'y' ? new T.Vector3(0, -1, 0) : new T.Vector3(0, 0, -1);
       const span = axis === 'z' ? 1.1 : axis === 'y' ? 0.75 : 0.85;
@@ -690,6 +707,19 @@ window.BRAIN = (function () {
     },
     has(key) { return !failed && !!groups[key]; },
     _cortexPoint: cortexPoint, _lobeOf: lobeOf,
+    _stats() {
+      let total = 0, vis = 0, hemi = 0, matHidden = 0;
+      scene.traverse(o => {
+        if (!o.isMesh) return;
+        total++;
+        if (o.visible) vis++;
+        if (o.userData.hemiHidden) hemi++;
+        if (o.material.visible === false) matHidden++;
+      });
+      return { total: total, visible: vis, hemiHidden: hemi, matHidden: matHidden,
+               cam: [+cam.position.x.toFixed(2), +cam.position.y.toFixed(2), +cam.position.z.toFixed(2)],
+               dist: +dist.toFixed(2), fit: +fit.toFixed(2), az: +rot.az.toFixed(2), el: +rot.el.toFixed(2) };
+    },
     viewName() {
       if (failed) return 'model unavailable';
       const a = ((rot.az % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);

@@ -8,6 +8,7 @@
   const meshToEntry = {};
   A.entries.forEach(e => { if (e.mesh && !e.parent && !meshToEntry[e.mesh]) meshToEntry[e.mesh] = e.id; });
   A.entries.forEach(e => { if (e.mesh && !meshToEntry[e.mesh]) meshToEntry[e.mesh] = e.id; });
+  meshToEntry.putamen = meshToEntry.putamen || 'striatum';
   const overlayByEntry = {};
   Object.keys(A.overlays).forEach(k => { if (!overlayByEntry[A.overlays[k].entry]) overlayByEntry[A.overlays[k].entry] = k; });
 
@@ -22,6 +23,8 @@
       if (doc) doc.set({ data: state, updated: Date.now() }).catch(() => {});
     }
     function save() { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 600); }
+    addEventListener('pagehide', flush);
+    addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
     (async function () {
       if (!window.claude || !window.claude.use) return;
       try {
@@ -162,7 +165,9 @@
         tb.appendChild(tr);
       });
       t.appendChild(tb);
-      wrap.appendChild(section('Assessment & measurement', t));
+      const tw = el('div', 'tablewrap');
+      tw.appendChild(t);
+      wrap.appendChild(section('Assessment & measurement', tw));
       if (e.caution) wrap.appendChild(el('div', 'caution', '<b>Psychometric caution</b>' + e.caution));
     } else if (tab === 'nums') {
       const grid = el('div', 'nums');
@@ -180,6 +185,7 @@
     } else if (tab === 'notes') {
       const ta = el('textarea', 'notes');
       ta.id = 'note-' + e.id;
+      ta.setAttribute('aria-label', 'Notes on ' + e.name);
       ta.placeholder = 'Your notes on ' + e.name + ' — questions to follow up, papers to read, how it connects to your own work.';
       ta.value = store.state.notes[e.id] || '';
       const st = el('div', 'savestate', 'Saved locally' + (window.claude && window.claude.use ? ' and to your account' : ''));
@@ -225,6 +231,14 @@
     renderTree();
     showOn3D(e, fly);
     if (('#' + id) !== location.hash) history.replaceState(null, '', '#' + id);
+    if (innerWidth <= 960) {
+      const r = $('rail');
+      if (r.classList.contains('open')) {
+        r.classList.remove('open');
+        $('railtoggle').textContent = 'Index';
+        $('railtoggle').setAttribute('aria-expanded', 'false');
+      }
+    }
   }
 
   /* ── 3D coupling ─────────────────────────────────────────────────── */
@@ -314,9 +328,15 @@
     host.innerHTML = '';
     svg.innerHTML = '';
     if (!labelsOn) return;
-    pins.forEach(pin => {
-      const s2 = B.project(pin.p);
-      if (s2.z > 1 || s2.x < -500) return;
+    const cap = innerWidth <= 700 ? 4 : 8, placed = [];
+    const shown = pins.map(p => ({ p: p, s: B.project(p.p) }))
+      .filter(o => o.s.z <= 1 && o.s.x > -500)
+      .sort((m, n) => (m.p.pin ? -1 : 0) - (n.p.pin ? -1 : 0) || m.s.y - n.s.y);
+    shown.forEach(o => {
+      const pin = o.p, s2 = o.s;
+      if (placed.length >= cap) return;
+      if (placed.some(q => Math.abs(q.y - s2.y) < 22 && Math.abs(q.x - s2.x) < 150)) return;
+      placed.push(s2);
       const lx = s2.x + 16, ly = s2.y - 26;
       const d = el('div', 'lbl' + (pin.pin ? ' pin' : ''), esc(pin.t));
       d.style.left = lx + 'px';
@@ -511,8 +531,18 @@
         : ((current && (A.groups.find(g => g.id === current.group) || {}).label) || 'Specimen') + ' · ' + B.viewName();
     };
     $('views').querySelectorAll('button').forEach(b => {
-      b.onclick = () => { B.view(b.dataset.v); setTimeout(() => { drawLabels(); refreshKicker(); }, 440); };
+      b.onclick = () => {
+        if (b.dataset.v === 'med') { $('plane').value = 'x'; $('depth').value = 7; B.clip('x', 0.07); }
+        B.view(b.dataset.v);
+        setTimeout(() => { drawLabels(); refreshKicker(); }, 440);
+      };
     });
+    const rail = $('rail');
+    $('railtoggle').onclick = () => {
+      const open = rail.classList.toggle('open');
+      $('railtoggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+      $('railtoggle').textContent = open ? 'Close' : 'Index';
+    };
     $('peel').oninput = e => B.peel(+e.target.value / 100);
     $('plane').onchange = e => B.clip(e.target.value, +$('depth').value / 100);
     $('depth').oninput = e => B.clip($('plane').value, +e.target.value / 100);
@@ -548,7 +578,8 @@
     };
     openEntry(fromHash() || 'orientation', false, false);
     addEventListener('hashchange', () => { const id = fromHash(); if (id && (!current || id !== current.id)) openEntry(id); });
-    setMode('explore');
+    const m = new URLSearchParams(location.search).get('mode');
+    setMode(m === 'learn' || m === 'test' ? m : 'explore');
   }
 
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot); else boot();
