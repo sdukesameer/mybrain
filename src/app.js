@@ -34,7 +34,7 @@
           state.seen = Object.assign({}, remote.seen, state.seen);
           state.notes = Object.assign({}, remote.notes, state.notes);
           if (remote.quiz && (remote.quiz.correct || 0) > (state.quiz.correct || 0)) state.quiz = remote.quiz;
-          renderTree(); renderProgress(); if (current) openEntry(current.id, true);
+          renderTree(); renderProgress(); if (current) openEntry(current.id, true, false);
         }
       } catch (_) {}
     })();
@@ -191,7 +191,7 @@
     host.scrollTop = 0;
   }
 
-  function openEntry(id, keepTab) {
+  function openEntry(id, keepTab, fly) {
     const e = A.get(id);
     if (!e) return;
     current = e;
@@ -218,18 +218,26 @@
       if (!has) return;
       const b = el('button', null, t.label);
       b.setAttribute('aria-pressed', t.id === tab ? 'true' : 'false');
-      b.onclick = () => { tab = t.id; openEntry(id, true); };
+      b.onclick = () => { tab = t.id; openEntry(id, true, false); };
       tabs.appendChild(b);
     });
     renderBody(e);
     renderTree();
-    showOn3D(e);
+    showOn3D(e, fly);
+    if (('#' + id) !== location.hash) history.replaceState(null, '', '#' + id);
   }
 
   /* ── 3D coupling ─────────────────────────────────────────────────── */
   let pins = [], markerPoint = null, labelsOn = true, userOverlay = 'none';
+  const order = [];
+  A.groups.forEach(g => {
+    A.entries.filter(e => e.group === g.id && !e.parent).forEach(e => {
+      order.push(e.id);
+      A.entries.filter(s2 => s2.parent === e.id).forEach(s2 => order.push(s2.id));
+    });
+  });
 
-  function showOn3D(e) {
+  function showOn3D(e, fly) {
     pins = [];
     markerPoint = null;
     if (e.mesh && B.has(e.mesh)) {
@@ -243,16 +251,19 @@
         if (c) pins.push({ p: c, t: e.name, pin: true });
       }
       if (userOverlay === 'none') B.setOverlay(null);
+      if (fly !== false) B.focus(e.mesh);
     } else {
       B.select(null);
       B.setMarker(null);
       const ovKey = overlayByEntry[e.id];
       if (ovKey && userOverlay === 'none') { applyOverlay(ovKey, true); $('overlay').value = ovKey; }
       else if (e.nodes) { B.setOverlay({ nodes: e.nodes, arcs: [] }); overlayPins(e.nodes); }
-      else if (userOverlay === 'none') B.setOverlay(null);
+      else if (userOverlay === 'none') { B.setOverlay(null); B.view('default'); }
     }
     $('ro-now').textContent = e.name;
-    $('ro-kicker').textContent = 'Selected · ' + B.viewName();
+    $('ro-kicker').textContent = (A.groups.find(g => g.id === e.group) || {}).label + ' · ' + B.viewName();
+    const i = order.indexOf(e.id);
+    $('navpos').textContent = i >= 0 ? (i + 1) + ' / ' + order.length : '';
     updateCoord(e);
     drawLabels();
   }
@@ -272,43 +283,58 @@
     if (key === 'none') {
       B.setOverlay(null);
       pins = [];
-      if (current) showOn3D(current);
+      if (current) showOn3D(current, false);
       return;
     }
     const def = A.overlays[key];
     B.setOverlay(def);
     overlayPins(def.nodes);
     if (!silent && def.entry) {
-      const keep = userOverlay;
-      openEntry(def.entry, false);
+      const keep = key;
+      openEntry(def.entry, false, false);
       userOverlay = keep;
       B.setOverlay(def);
       overlayPins(def.nodes);
     }
+    B.view('default');
     $('ro-kicker').textContent = 'Overlay · ' + def.label;
     drawLabels();
   }
 
   function updateCoord(e) {
     const key = e && e.mesh;
-    let p = markerPoint || (key ? B.centroid(key) : null);
+    const p = markerPoint || (key ? B.centroid(key) : null);
     if (!p) { $('ro-coord').textContent = e && e.nodes ? e.nodes.length + ' nodes traced' : ''; return; }
     const mm = v => (v >= 0 ? '+' : '−') + Math.abs(Math.round(v * 85));
     $('ro-coord').textContent = `x ${mm(p.x)}  y ${mm(p.z)}  z ${mm(p.y)} mm · model estimate`;
   }
 
   function drawLabels() {
-    const host = $('labels');
+    const host = $('labels'), svg = $('leads');
     host.innerHTML = '';
+    svg.innerHTML = '';
     if (!labelsOn) return;
     pins.forEach(pin => {
-      const s = B.project(pin.p);
-      if (s.z > 1) return;
+      const s2 = B.project(pin.p);
+      if (s2.z > 1 || s2.x < -500) return;
+      const lx = s2.x + 16, ly = s2.y - 26;
       const d = el('div', 'lbl' + (pin.pin ? ' pin' : ''), esc(pin.t));
-      d.style.left = s.x + 'px';
-      d.style.top = (s.y - 8) + 'px';
+      d.style.left = lx + 'px';
+      d.style.top = ly + 'px';
       host.appendChild(d);
+      const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      ln.setAttribute('x1', s2.x); ln.setAttribute('y1', s2.y);
+      ln.setAttribute('x2', lx); ln.setAttribute('y2', ly);
+      svg.appendChild(ln);
     });
+  }
+
+  function step(delta) {
+    if (!current) return;
+    let i = order.indexOf(current.id);
+    if (i < 0) i = 0;
+    i = (i + delta + order.length) % order.length;
+    openEntry(order[i]);
   }
 
   /* ── course pane ─────────────────────────────────────────────────── */
@@ -403,22 +429,71 @@
     if (isAtlas) setTimeout(() => B.resize(), 20);
   }
 
+  function setBoot(f) {
+    const b = $('boot');
+    if (!b) return;
+    $('boot-bar').style.width = Math.round(f * 100) + '%';
+    $('boot-pct').textContent = Math.round(f * 100) + '%';
+    if (f >= 1) { b.classList.add('gone'); setTimeout(() => b.remove(), 600); }
+  }
+
+  function showTip(key, x, y) {
+    const t = $('tip');
+    const id = key && meshToEntry[key];
+    if (!id) { t.classList.remove('on'); $('gl').style.cursor = 'grab'; return; }
+    const e = A.get(id);
+    t.innerHTML = '';
+    t.appendChild(el('span', null, (A.groups.find(g => g.id === e.group) || {}).label));
+    t.appendChild(el('b', null, esc(e.name)));
+    t.style.left = x + 'px';
+    t.style.top = y + 'px';
+    t.classList.add('on');
+    $('gl').style.cursor = 'pointer';
+  }
+
+  function keys(ev) {
+    const typing = /input|textarea|select/i.test((ev.target.tagName || ''));
+    if (ev.key === '/' && !typing) { ev.preventDefault(); $('q').focus(); return; }
+    if (typing) return;
+    if (ev.key === 'Escape') { $('q').value = ''; filter = ''; renderTree(); B.select(null); B.setMarker(null); pins = []; drawLabels(); return; }
+    if (ev.key === 'ArrowLeft') { B.nudge(-0.18, 0); ev.preventDefault(); }
+    if (ev.key === 'ArrowRight') { B.nudge(0.18, 0); ev.preventDefault(); }
+    if (ev.key === 'ArrowUp') { B.nudge(0, -0.14); ev.preventDefault(); }
+    if (ev.key === 'ArrowDown') { B.nudge(0, 0.14); ev.preventDefault(); }
+    if (ev.key === '+' || ev.key === '=') B.zoom(-0.25);
+    if (ev.key === '-' || ev.key === '_') B.zoom(0.25);
+    if (ev.key === '[') step(-1);
+    if (ev.key === ']') step(1);
+    if (ev.key === ' ') { ev.preventDefault(); B.spin(!B.spinning()); }
+    if (ev.key === 'i') { const c = $('isochk'); c.checked = !c.checked; B.isolate(c.checked); }
+  }
+
   function boot() {
     renderTree();
     renderProgress();
     B.init({
       canvas: $('gl'),
+      onFrame: drawLabels,
+      onProgress: setBoot,
+      onReady() {
+        if (current) showOn3D(current, false);
+        const v = new URLSearchParams(location.search).get('view');
+        if (v) { B.view(v); setTimeout(() => { $('ro-kicker').textContent = 'Specimen · ' + B.viewName(); }, 500); } else B.spin(true);
+      },
       onFail() {
-        const st = $('stage');
-        const n = el('div', 'glfail', '<b>3D view unavailable</b>This browser could not start WebGL, so the model cannot be drawn. Every dossier, the course and the viva all still work — use the index on the left. To restore the model, enable hardware acceleration or open the page in another browser.');
-        st.appendChild(n);
-        $('ro-now').textContent = 'Atlas';
+        setBoot(1);
+        const n = el('div', 'glfail', '<b>3D view unavailable</b>This browser could not start WebGL, so the model cannot be drawn. Every dossier, the course and the viva still work — use the index on the left. To restore the model, enable hardware acceleration or open the page in another browser.');
+        $('stage').appendChild(n);
         $('ro-kicker').textContent = 'Text mode';
       },
-      labels: $('labels'),
-      onFrame: drawLabels,
-      onHover(key) {
-        if (!key) { $('ro-kicker').textContent = (userOverlay !== 'none' ? 'Overlay · ' + A.overlays[userOverlay].label : 'Selected · ' + B.viewName()); $('ro-now').textContent = current ? current.name : '—'; return; }
+      onHover(key, x, y) {
+        showTip(key, x, y);
+        if (!key) {
+          $('ro-kicker').textContent = userOverlay !== 'none' ? 'Overlay · ' + A.overlays[userOverlay].label
+            : ((current && (A.groups.find(g => g.id === current.group) || {}).label) || 'Specimen') + ' · ' + B.viewName();
+          $('ro-now').textContent = current ? current.name : 'Encephalon';
+          return;
+        }
         const id = meshToEntry[key];
         if (!id) return;
         $('ro-kicker').textContent = 'Hover · click to open';
@@ -427,29 +502,52 @@
       onPick(key) {
         if (!key) return;
         const id = meshToEntry[key];
-        if (id) { userOverlay = $('overlay').value = 'none'; openEntry(id); }
+        if (id) { userOverlay = $('overlay').value = 'none'; openEntry(id, false, false); }
       }
     });
 
-    $('views').querySelectorAll('button').forEach(b => { b.onclick = () => { B.view(b.dataset.v); setTimeout(drawLabels, 400); }; });
-    $('peel').oninput = e => { B.peel(+e.target.value / 100); };
-    $('plane').onchange = e => { B.clip(e.target.value, +$('depth').value / 100); };
-    $('depth').oninput = e => { B.clip($('plane').value, +e.target.value / 100); };
+    const refreshKicker = () => {
+      $('ro-kicker').textContent = userOverlay !== 'none' ? 'Overlay · ' + A.overlays[userOverlay].label
+        : ((current && (A.groups.find(g => g.id === current.group) || {}).label) || 'Specimen') + ' · ' + B.viewName();
+    };
+    $('views').querySelectorAll('button').forEach(b => {
+      b.onclick = () => { B.view(b.dataset.v); setTimeout(() => { drawLabels(); refreshKicker(); }, 440); };
+    });
+    $('peel').oninput = e => B.peel(+e.target.value / 100);
+    $('plane').onchange = e => B.clip(e.target.value, +$('depth').value / 100);
+    $('depth').oninput = e => B.clip($('plane').value, +e.target.value / 100);
     $('overlay').onchange = e => applyOverlay(e.target.value);
     $('lblchk').onchange = e => { labelsOn = e.target.checked; drawLabels(); };
+    $('isochk').onchange = e => B.isolate(e.target.checked);
+    $('surface').querySelectorAll('button').forEach(b => {
+      b.onclick = () => {
+        $('surface').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+        B.colorMode(b.dataset.s);
+        $('legend').classList.toggle('on', b.dataset.s === 'tint');
+      };
+    });
+    $('prev').onclick = () => step(-1);
+    $('next').onclick = () => step(1);
+    $('spin').onclick = () => B.spin(!B.spinning());
     $('q').oninput = e => { filter = e.target.value.trim().toLowerCase(); renderTree(); };
     $('m-explore').onclick = () => setMode('explore');
     $('m-learn').onclick = () => setMode('learn');
     $('m-test').onclick = () => setMode('test');
     $('theme').onclick = () => {
-      const r = document.documentElement;
-      const cur = r.getAttribute('data-theme');
+      const r = document.documentElement, cur = r.getAttribute('data-theme');
       const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
       r.setAttribute('data-theme', dark ? 'light' : 'dark');
     };
     addEventListener('resize', () => { B.resize(); drawLabels(); });
+    addEventListener('keydown', keys);
+    $('gl').style.cursor = 'grab';
 
-    openEntry('orientation');
+    const fromHash = () => {
+      const id = decodeURIComponent((location.hash || '').replace(/^#/, ''));
+      return A.get(id) ? id : null;
+    };
+    openEntry(fromHash() || 'orientation', false, false);
+    addEventListener('hashchange', () => { const id = fromHash(); if (id && (!current || id !== current.id)) openEntry(id); });
     setMode('explore');
   }
 

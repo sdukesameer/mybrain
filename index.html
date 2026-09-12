@@ -118,7 +118,9 @@ button,input,select,textarea{font:inherit;color:inherit}
   border:0;border-left:2px solid transparent;background:transparent;cursor:pointer;
   padding:5px 14px 5px 26px;font-size:13px;color:var(--ink-2);
 }
+.item{transition:background .12s ease,color .12s ease,border-color .12s ease}
 .item:hover{background:var(--surface-2);color:var(--ink)}
+.item:hover .dot{background:var(--accent)}
 .item[aria-current="true"]{border-left-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
 .item.sub{padding-left:38px;font-size:12.5px;color:var(--ink-3)}
 .item .dot{width:5px;height:5px;border-radius:50%;background:var(--line-2);flex:none}
@@ -138,6 +140,61 @@ button,input,select,textarea{font:inherit;color:inherit}
 .hint{
   position:absolute;top:12px;right:14px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--ink-3);pointer-events:none;text-align:right;line-height:1.7;
+}
+/* viewport chrome */
+.boot{
+  position:absolute;inset:0;display:grid;place-items:center;z-index:5;
+  background:radial-gradient(60% 50% at 50% 45%,color-mix(in srgb,var(--accent) 9%,transparent),transparent 70%);
+  transition:opacity .5s ease;
+}
+.boot.gone{opacity:0;pointer-events:none}
+.boot-in{display:grid;gap:10px;justify-items:center;text-align:center;padding:0 20px}
+.boot-in b{font-family:var(--ui);font-size:10.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+.boot-in i{font-family:var(--mono);font-size:22px;font-style:normal;color:var(--accent);font-variant-numeric:tabular-nums}
+.boot-bar{width:190px;height:2px;background:var(--surface-3);overflow:hidden}
+.boot-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s ease}
+.boot-in em{font-family:var(--serif);font-size:13px;font-style:italic;color:var(--ink-3);max-width:34ch;line-height:1.5}
+.spark{
+  width:26px;height:26px;border-radius:50%;border:1.5px solid var(--accent-line);
+  border-top-color:var(--accent);animation:spin 1.1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tip{
+  position:absolute;z-index:6;pointer-events:none;opacity:0;transform:translate(12px,-50%);
+  background:var(--surface);border:1px solid var(--line-2);border-left:2px solid var(--accent);
+  padding:5px 9px;box-shadow:var(--shadow);transition:opacity .12s ease;max-width:230px;
+}
+.tip.on{opacity:1}
+.tip b{display:block;font-family:var(--serif);font-size:14px;font-weight:500;line-height:1.25}
+.tip span{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.leads{position:absolute;inset:0;pointer-events:none;width:100%;height:100%;overflow:visible}
+.leads line{stroke:var(--accent-line);stroke-width:1}
+.nav{display:flex;align-items:center;gap:6px;margin-top:6px;pointer-events:auto}
+.nav button{
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;
+  width:24px;height:22px;border-radius:2px;font-family:var(--mono);font-size:11px;line-height:1;
+}
+.nav button:hover{border-color:var(--accent);color:var(--accent)}
+.nav span{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.04em}
+.legend{
+  position:absolute;left:14px;bottom:78px;display:none;gap:4px;flex-direction:column;pointer-events:none;
+}
+.legend.on{display:flex}
+.legend div{display:flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.06em;color:var(--ink-2);text-transform:uppercase}
+.legend i{width:9px;height:9px;border-radius:2px;display:block}
+.seg{display:flex;gap:2px}
+.seg button{
+  border:1px solid var(--line);background:var(--bg);color:var(--ink-3);cursor:pointer;border-radius:2px;
+  font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;font-weight:600;
+}
+.seg button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.keys{
+  position:absolute;right:14px;bottom:78px;text-align:right;pointer-events:none;
+  font-family:var(--mono);font-size:9.5px;line-height:1.8;color:var(--ink-3);opacity:.85;
+}
+.keys kbd{
+  font-family:var(--mono);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:3px;
+  padding:0 3px;color:var(--ink-2);
 }
 .glfail{
   position:absolute;inset:auto 14px 74px 14px;max-width:520px;margin:0 auto;
@@ -187,6 +244,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .chip.acc{border-color:var(--accent-line);color:var(--accent);background:var(--accent-soft)}
 .chip.cy{border-color:var(--cyan);color:var(--cyan);background:var(--cyan-soft)}
 .dhead h2{font-size:27px;line-height:1.12}
+.dbody>.sect{animation:rise .32s cubic-bezier(.2,.7,.3,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .latin{font-family:var(--serif);font-style:italic;color:var(--ink-3);font-size:14.5px;margin-top:2px}
 .tagline{
   font-family:var(--serif);font-size:15.5px;line-height:1.5;color:var(--ink-2);
@@ -284,6 +343,7 @@ textarea.notes{
 .qmeta{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
 .qmeta button{margin-left:auto}
 
+@media (max-width:1320px){.hint{display:none}}
 @media (max-width:1180px){:root{--rail:230px;--dossier:360px}}
 @media (max-width:960px){
   .body{grid-template-columns:1fr;grid-template-rows:auto minmax(280px,44vh) minmax(0,1fr)}
@@ -323,11 +383,33 @@ textarea.notes{
       <canvas id="gl"></canvas>
       <div class="readout">
         <div class="kicker" id="ro-kicker">Specimen &middot; right lateral</div>
-        <div class="now" id="ro-now">Loading model…</div>
+        <div class="now" id="ro-now">Encephalon</div>
         <div class="coord" id="ro-coord"></div>
+        <div class="nav">
+          <button id="prev" title="Previous structure ([)">&#8249;</button>
+          <button id="next" title="Next structure (])">&#8250;</button>
+          <button id="spin" title="Toggle rotation (space)">&#9676;</button>
+          <span id="navpos"></span>
+        </div>
       </div>
-      <div class="hint">drag rotate &middot; scroll zoom<br>click structure to open dossier</div>
+      <div class="hint">drag rotate &middot; scroll zoom<br>click a structure &middot; double-click to frame it</div>
+      <svg class="leads" id="leads"></svg>
       <div id="labels"></div>
+      <div class="tip" id="tip"></div>
+      <div class="legend" id="legend">
+        <div><i style="background:#a07cc4"></i>Frontal</div>
+        <div><i style="background:#3f93a4"></i>Parietal</div>
+        <div><i style="background:#c08347"></i>Temporal</div>
+        <div><i style="background:#5c6cae"></i>Occipital</div>
+      </div>
+      <div class="keys"><kbd>&larr;&rarr;</kbd> rotate &middot; <kbd>+</kbd><kbd>&minus;</kbd> zoom<br><kbd>/</kbd> search &middot; <kbd>i</kbd> isolate &middot; <kbd>esc</kbd> clear</div>
+      <div class="boot" id="boot"><div class="boot-in">
+        <span class="spark"></span>
+        <i id="boot-pct">0%</i>
+        <b>Folding the cortical surface</b>
+        <em>Building 50 structures from anatomical parameters — gyri, nuclei, tracts, brainstem and cerebellum.</em>
+        <div class="boot-bar"><i id="boot-bar"></i></div>
+      </div></div>
       <div class="instr">
         <div class="cell"><span>View</span>
           <div class="views" id="views">
@@ -361,7 +443,16 @@ textarea.notes{
             <option value="ach">Acetylcholine · basal forebrain</option>
           </select>
         </div>
-        <div class="cell"><span>Labels</span><label class="chk"><input id="lblchk" type="checkbox" checked> Pins</label></div>
+        <div class="cell"><span>Surface</span>
+          <div class="seg" id="surface">
+            <button data-s="tissue" aria-pressed="true">Tissue</button>
+            <button data-s="tint" aria-pressed="false">Lobes</button>
+          </div>
+        </div>
+        <div class="cell"><span>Display</span>
+          <label class="chk"><input id="lblchk" type="checkbox" checked> Pins</label>
+          <label class="chk"><input id="isochk" type="checkbox"> Isolate</label>
+        </div>
       </div>
     </main>
 
