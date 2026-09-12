@@ -181,6 +181,11 @@
       if ((e.nums || []).length) wrap.appendChild(section('Quantities worth knowing', grid));
       const refs = el('div', 'refs');
       (e.refs || []).forEach(r => refs.appendChild(el('div', null, r)));
+      if (e.wiki) {
+        refs.appendChild(el('div', null, 'Background reading: <a href="https://en.wikipedia.org/wiki/' +
+          encodeURIComponent(e.wiki) + '" target="_blank" rel="noopener noreferrer">' +
+          esc(e.wiki.replace(/_/g, ' ')) + ' on Wikipedia</a> — an overview, not a primary source.'));
+      }
       if ((e.refs || []).length) wrap.appendChild(section('Primary sources', refs));
     } else if (tab === 'notes') {
       const ta = el('textarea', 'notes');
@@ -211,6 +216,15 @@
     if (e.parent) {
       const p = A.get(e.parent);
       eb.appendChild(el('span', 'chip cy', 'in ' + p.name));
+    }
+    if (e.wiki) {
+      const wl = document.createElement('a');
+      wl.className = 'wikilink';
+      wl.href = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(e.wiki);
+      wl.target = '_blank';
+      wl.rel = 'noopener noreferrer';
+      wl.textContent = 'Wikipedia ↗';
+      eb.appendChild(wl);
     }
     if (e.mesh) {
       const iso = el('button', 'chipbtn' + ($('isochk').checked ? ' on' : ''), $('isochk').checked ? 'Showing only this' : 'Show only this');
@@ -450,6 +464,27 @@
     host.appendChild(w);
   }
 
+  /* ── legend for the active surface mode ──────────────────────────── */
+  function renderLegend(mode) {
+    const host = $('legend');
+    host.innerHTML = '';
+    const rows = mode === 'func' ? B.funcLegend : mode === 'tint' ? B.lobeLegend : null;
+    host.classList.toggle('on', !!rows);
+    if (!rows) return;
+    host.appendChild(el('b', null, mode === 'func' ? 'What each part does' : 'Lobes'));
+    rows.forEach(r => {
+      const d = el('div');
+      const sw = el('i');
+      sw.style.background = '#' + r.color.toString(16).padStart(6, '0');
+      d.appendChild(sw);
+      d.appendChild(document.createTextNode(r.label));
+      host.appendChild(d);
+    });
+    if (mode === 'func') {
+      host.appendChild(el('div', null, '<span style="font-family:var(--serif);text-transform:none;letter-spacing:0;font-style:italic;color:var(--ink-3);font-size:11px;line-height:1.4">Speech and language are mapped on both sides here; in life they are left-dominant in ~95% of right-handers.</span>'));
+    }
+  }
+
   /* ── tissue layers ───────────────────────────────────────────────── */
   const LAYER_LABEL = {
     cortex: ['Cortical surface', 'the outer skin'],
@@ -654,6 +689,8 @@
       onProgress: setBoot,
       onReady() {
         if (current) showOn3D(current, false);
+        const sf = new URLSearchParams(location.search).get('surface');
+        if (sf) { const b = document.querySelector('#surface button[data-s="' + sf + '"]'); if (b) b.click(); }
         const v = new URLSearchParams(location.search).get('view');
         if (v) { B.view(v); setTimeout(() => { $('ro-kicker').textContent = 'Specimen · ' + B.viewName(); }, 500); } else B.spin(true);
       },
@@ -711,7 +748,7 @@
       b.onclick = () => {
         $('surface').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
         B.colorMode(b.dataset.s);
-        $('legend').classList.toggle('on', b.dataset.s === 'tint');
+        renderLegend(b.dataset.s);
       };
     });
     $('layerbtn').onclick = () => {

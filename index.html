@@ -179,11 +179,18 @@ button,input,select,textarea{font:inherit;color:inherit}
 .nav button:hover{border-color:var(--accent);color:var(--accent)}
 .nav span{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.04em}
 .legend{
-  position:absolute;left:14px;bottom:78px;display:none;gap:4px;flex-direction:column;pointer-events:none;
+  position:absolute;left:14px;bottom:78px;display:none;gap:2px;flex-direction:column;
+  background:color-mix(in srgb,var(--surface) 90%,transparent);padding:8px 10px;border-radius:3px;
+  border:1px solid var(--line);max-width:196px;max-height:calc(100% - 150px);
+  overflow-y:auto;pointer-events:auto;backdrop-filter:blur(2px);
 }
 .legend.on{display:flex}
-.legend div{display:flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.06em;color:var(--ink-2);text-transform:uppercase}
-.legend i{width:9px;height:9px;border-radius:2px;display:block}
+.legend div{display:flex;align-items:center;gap:6px;font-size:9.5px;letter-spacing:.04em;color:var(--ink-2);text-transform:uppercase;line-height:1.25}
+.legend b{
+  display:block;font-family:var(--ui);font-size:9px;font-weight:700;letter-spacing:.14em;
+  color:var(--ink-3);margin-bottom:2px;text-transform:uppercase;
+}
+.legend i{width:9px;height:9px;border-radius:2px;display:block;flex:none}
 .seg{display:flex;gap:2px}
 .seg button{
   border:1px solid var(--line);background:var(--bg);color:var(--ink-3);cursor:pointer;border-radius:2px;
@@ -308,6 +315,13 @@ button,input,select,textarea{font:inherit;color:inherit}
 }
 .chipbtn:hover{border-color:var(--accent);color:var(--accent)}
 .chipbtn.on{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+a.wikilink{
+  font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;
+  border:1px solid var(--line-2);background:var(--bg);color:var(--ink-2);padding:2px 7px;border-radius:2px;
+}
+a.wikilink:hover{border-color:var(--cyan);color:var(--cyan)}
+.refs a{color:var(--cyan);text-decoration:none;border-bottom:1px solid var(--cyan-soft)}
+.refs a:hover{border-bottom-color:var(--cyan)}
 .dhead h2{font-size:27px;line-height:1.12}
 .dbody>.sect{animation:rise .32s cubic-bezier(.2,.7,.3,1) both}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -410,6 +424,7 @@ textarea.notes{
 .qmeta button{margin-left:auto}
 
 @media (max-width:1320px){.hint{display:none}}
+@media (max-height:620px){.legend{display:none!important}}
 @media (max-width:1180px){:root{--rail:230px;--dossier:360px}}
 @media (max-width:960px){
   .only-mobile{display:inline-block;margin-left:auto}
@@ -524,12 +539,7 @@ textarea.notes{
       <svg class="leads" id="leads"></svg>
       <div id="labels"></div>
       <div class="tip" id="tip"></div>
-      <div class="legend" id="legend">
-        <div><i style="background:#a07cc4"></i>Frontal</div>
-        <div><i style="background:#3f93a4"></i>Parietal</div>
-        <div><i style="background:#c08347"></i>Temporal</div>
-        <div><i style="background:#5c6cae"></i>Occipital</div>
-      </div>
+      <div class="legend" id="legend"></div>
       <div class="keys"><kbd>&larr;&rarr;</kbd> rotate &middot; <kbd>+</kbd><kbd>&minus;</kbd> zoom<br><kbd>/</kbd> search &middot; <kbd>i</kbd> isolate &middot; <kbd>esc</kbd> clear</div>
       <div class="layerpanel" id="layerpanel" hidden>
         <header>Tissue layers<button id="layerall">Show all</button></header>
@@ -580,6 +590,7 @@ textarea.notes{
           <div class="seg" id="surface">
             <button data-s="tissue" aria-pressed="true">Tissue</button>
             <button data-s="tint" aria-pressed="false">Lobes</button>
+            <button data-s="func" aria-pressed="false">Function</button>
           </div>
         </div>
         <div class="cell"><span>Layers</span>

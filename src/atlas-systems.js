@@ -459,3 +459,29 @@
   ];
 
 })(window.ATLAS);
+
+/* Wikipedia articles for further reading — one per dossier. */
+(function (A) {
+  const WIKI = {
+    orientation: 'Neuroanatomy', psychometrics: 'Psychometrics',
+    frontal: 'Frontal_lobe', m1: 'Primary_motor_cortex', premotor: 'Premotor_cortex',
+    dlpfc: 'Dorsolateral_prefrontal_cortex', ofc: 'Orbitofrontal_cortex',
+    vmpfc: 'Ventromedial_prefrontal_cortex', broca: "Broca's_area", fef: 'Frontal_eye_fields',
+    parietal: 'Parietal_lobe', s1: 'Primary_somatosensory_cortex', ipl: 'Inferior_parietal_lobule',
+    precuneus: 'Precuneus', temporal: 'Temporal_lobe', a1: 'Auditory_cortex',
+    wernicke: "Wernicke's_area", fusiform: 'Fusiform_gyrus', atl: 'Temporal_pole',
+    occipital: 'Occipital_lobe', v1: 'Visual_cortex', insula: 'Insular_cortex',
+    cingulate: 'Cingulate_cortex', thalamus: 'Thalamus', hypothalamus: 'Hypothalamus',
+    hippocampus: 'Hippocampus', amygdala: 'Amygdala', striatum: 'Striatum',
+    pallidum: 'Globus_pallidus', accumbens: 'Nucleus_accumbens', basalforebrain: 'Basal_forebrain',
+    cc: 'Corpus_callosum', arcuate: 'Arcuate_fasciculus', uncinate: 'Uncinate_fasciculus',
+    fornix: 'Fornix_(neuroanatomy)', capsule: 'Internal_capsule', midbrain: 'Midbrain',
+    dopamine: 'Substantia_nigra', raphe: 'Raphe_nuclei', lc: 'Locus_coeruleus',
+    pons: 'Pons', medulla: 'Medulla_oblongata', cerebellum: 'Cerebellum',
+    pituitary: 'Pituitary_gland', ventricles: 'Ventricular_system',
+    language: 'Language_processing_in_the_brain', dmn: 'Default_mode_network',
+    control: 'Attentional_control', limbic: 'Limbic_system',
+    loops: 'Cortico-basal_ganglia-thalamo-cortical_loop'
+  };
+  A.entries.forEach(e => { if (WIKI[e.id]) e.wiki = WIKI[e.id]; });
+})(window.ATLAS);

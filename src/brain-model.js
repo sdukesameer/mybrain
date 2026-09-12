@@ -105,7 +105,7 @@ window.BRAIN = (function () {
     // width: widest at the temporo-parietal region, tapering to both poles
     const wf = 1 - 0.30 * Math.pow(Math.max(0, z), 1.7) - 0.46 * Math.pow(Math.max(0, -z - 0.42), 1.5);
     const hf = 1 - 0.20 * Math.pow(Math.max(0, z - 0.28), 1.4) - 0.30 * Math.pow(Math.max(0, -z - 0.40), 1.4);
-    let ex = (x >= 0 ? x * 0.715 : x * 0.05) * wf;
+    let ex = (x >= 0 ? x * 0.715 : x * 0.035) * wf;
     let ey = y * 0.735 * hf;
     let ez = z * 1.0;
 
@@ -130,16 +130,61 @@ window.BRAIN = (function () {
     if (ez < -0.78) ey *= 1 - 0.22 * (-ez - 0.78) / 0.2;     // occipital pole pinch
 
     const sd = sulcalDepth(ex, ey, ez);
-    // gentle gyral undulation between the sulci, plus a little skin texture
-    const gy = fbm2(px * 4.6 + 11, py * 5.8 + 3, pz * 3.0 + 7) * 0.024
-             + fbm2(px * 9.5 + 2, py * 11.0, pz * 6.0) * 0.013
-             + fbm2(px * 19.0 + 5, py * 21.0, pz * 13.0) * 0.005;
+
+    // Secondary and tertiary gyrification: the winding, worm-like ridges that
+    // cover the whole surface between the named sulci. Inverse-ridged noise
+    // puts narrow valleys along the zero-set and broad crowns between them.
+    const w1 = fbm2(px * 3.1 + 17, py * 3.4 + 5, pz * 2.6 + 11) * 0.5;   // domain warp
+    const n1 = fbm2(px * 6.8 + w1 + 31, py * 7.6 + w1 * 0.8, pz * 6.0 - w1);
+    const n2 = fbm2(px * 14.5 + 3, py * 15.5, pz * 12.5);
+    const r1 = 2 * Math.pow(Math.abs(n1), 0.42) - 1;     // −1 sulcus … +1 crown
+    const r2 = 2 * Math.pow(Math.abs(n2), 0.5) - 1;
+    const gy = r1 * 0.040 + r2 * 0.013 + noise(px * 30, py * 30, pz * 30) * 0.003;
+
     const len = Math.hypot(ex, ey, ez) || 1;
     const s = 1 + (gy - sd) / len;
-    // shading weight: 0 in the depth of a sulcus, 1 on a gyral crown
-    let t = 1 - Math.pow(Math.min(1, sd / 0.062), 1.15);
-    t *= 0.88 + 0.12 * Math.max(0, Math.min(1, (gy + 0.025) / 0.05));
-    return [0.052 + ex * s, ey * s, ez * s, Math.max(0, Math.min(1, t))];
+
+    // shading: dark in every valley, primary or secondary
+    const prim = Math.pow(Math.min(1, sd / 0.058), 1.05);
+    const sec = Math.pow(Math.max(0, Math.min(1, (0.012 - gy) / 0.045)), 0.8);
+    let t = (1 - prim) * (1 - 0.92 * sec);
+    return [0.055 + ex * s, ey * s, ez * s, Math.max(0, Math.min(1, t))];
+  }
+
+  /* Functional parcellation — which part does what, in the terms a
+     psychologist works in. Derived from the same sulcal geometry, so the
+     motor strip really is the precentral gyrus and so on. */
+  const FUNC = {
+    motor:     ['Movement', 0xf0ad3c],
+    touch:     ['Touch & body sense', 0x54bfa2],
+    exec:      ['Planning & control', 0x6aa6e2],
+    speech:    ['Speech production', 0xe8607a],
+    hearing:   ['Hearing', 0xf28a4a],
+    language:  ['Language comprehension', 0xb98ce0],
+    vision:    ['Vision', 0xc0cf46],
+    memory:    ['Memory & recognition', 0x74c07c],
+    emotion:   ['Emotion & value', 0xe27ab5],
+    spatial:   ['Spatial attention', 0x4fb0d6],
+    assoc:     ['Association cortex', 0xa9a5bc]
+  };
+  function functionOf(y, z) {
+    const syl = sylvian(z), cs = 0.22 - 0.45 * y;
+    if (y > syl) {
+      if (z > cs && z < cs + 0.20) return 'motor';
+      if (z > cs - 0.18 && z <= cs) return 'touch';
+      if (z < -0.66) return 'vision';
+      if (z > cs + 0.20) {
+        if (y < -0.16) return 'emotion';                       // orbital / ventromedial
+        if (y < 0.24 && z < 0.62) return 'speech';             // inferior frontal
+        return 'exec';
+      }
+      if (z < -0.14) return 'spatial';                          // parietal association
+      return 'assoc';
+    }
+    if (z < -0.62) return 'vision';
+    if (y > syl - 0.15) return z < -0.12 ? 'language' : 'hearing';
+    if (z > 0.42) return 'emotion';                             // temporal pole
+    return 'memory';
   }
 
   const LAYERS = {
@@ -157,7 +202,7 @@ window.BRAIN = (function () {
   const hiddenLayers = new Set();
 
   const LOBE_COL = { frontal: 0xa07cc4, parietal: 0x3f93a4, temporal: 0xc08347, occipital: 0x5c6cae };
-  const TISSUE_HI = new T.Color(0xf3b2a6), TISSUE_MID = new T.Color(0xa85455), TISSUE_LO = new T.Color(0x1a1214);
+  const TISSUE_HI = new T.Color(0xf2d2c6), TISSUE_MID = new T.Color(0xc9807e), TISSUE_LO = new T.Color(0x412a2e);
   const mats = [];
 
   function gridSize() {
@@ -219,20 +264,28 @@ window.BRAIN = (function () {
         g.setIndex(L.idx);
         g.computeVertexNormals();
         // bake two palettes: raw tissue, and lobe-tinted — both darkened in sulci
-        const tissue = [], tint = [], lc = new T.Color(LOBE_COL[n]), c1 = new T.Color(), c2 = new T.Color();
+        const tissue = [], tint = [], func = [];
+        const lc = new T.Color(LOBE_COL[n]), c1 = new T.Color(), c2 = new T.Color(), c3 = new T.Color();
+        const fk = [];
         for (let v = 0; v < L.fold.length; v++) {
-          const t = L.fold[v], e = 0.28 + 0.72 * Math.pow(t, 1.1);
-          // two-stage ramp: sulcal line → rose flank → salmon crown
-          const a = Math.min(1, t / 0.42), b = Math.max(0, (t - 0.40) / 0.60);
+          const t = L.fold[v], e = 0.30 + 0.70 * Math.pow(t, 1.1);
+          // three-stage ramp: sulcal floor → pink flank → pale crown
+          const a = Math.min(1, t / 0.45), b = Math.max(0, (t - 0.42) / 0.58);
           c1.copy(TISSUE_LO).lerp(TISSUE_MID, a * a * (3 - 2 * a)).lerp(TISSUE_HI, b * b * (3 - 2 * b));
           c1.convertSRGBToLinear();
           tissue.push(c1.r, c1.g, c1.b);
           c2.copy(lc).multiplyScalar(Math.min(1, e * 1.12)).convertSRGBToLinear();
           tint.push(Math.min(1, c2.r), Math.min(1, c2.g), Math.min(1, c2.b));
+          const key = functionOf(L.pos[v * 3 + 1], L.pos[v * 3 + 2]);
+          fk.push(key);
+          c3.setHex(FUNC[key][1]).multiplyScalar(Math.min(1, e * 1.1)).convertSRGBToLinear();
+          func.push(Math.min(1, c3.r), Math.min(1, c3.g), Math.min(1, c3.b));
         }
         g.setAttribute('color', new T.Float32BufferAttribute(tissue, 3));
         g.userData.tissue = new T.Float32BufferAttribute(tissue, 3);
         g.userData.tint = new T.Float32BufferAttribute(tint, 3);
+        g.userData.func = new T.Float32BufferAttribute(func, 3);
+        g.userData.funcKeys = fk;
         out[n] = g;
       });
       onStep(1);
@@ -381,11 +434,11 @@ window.BRAIN = (function () {
     both(s => {
       const g = new T.SphereGeometry(1, 60, 42);
       const p = g.attributes.position, col = [];
-      const hi = new T.Color(0xd2888a), lo = new T.Color(0xf2e0d4), c = new T.Color();
+      const hi = new T.Color(0xd9928e), lo = new T.Color(0xf4e6dc), c = new T.Color();
       for (let i = 0; i < p.count; i++) {
         const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-        const rid = 2 * Math.pow(Math.abs(Math.sin(y * 17 + z * 1.6 + noise(x * 3, y * 3, z * 3) * 0.35)), 0.5) - 1;
-        const f = 1 + rid * 0.038;
+        const rid = 2 * Math.pow(Math.abs(Math.sin(y * 26 + z * 1.2 + noise(x * 2.4, y * 2.4, z * 2.4) * 0.22)), 0.42) - 1;
+        const f = 1 + rid * 0.030;
         p.setXYZ(i, x * f, y * f, z * f);
         c.copy(lo).lerp(hi, (rid + 1) / 2).convertSRGBToLinear();
         col.push(c.r, c.g, c.b);
@@ -450,12 +503,26 @@ window.BRAIN = (function () {
     needsRender = true;
   }
 
+  const FUNC_EXTRA = {
+    cerebellum: 0x9b7fd4, midbrain: 0xe8736b, pons: 0xe8736b, medulla: 0xe8736b,
+    insula: 0xe27ab5, cingulate: 0xe27ab5, amygdala: 0xe27ab5, accumbens: 0xe27ab5,
+    hippocampus: 0x74c07c, basalforebrain: 0x74c07c,
+    caudate: 0xf0ad3c, putamen: 0xf0ad3c, pallidum: 0xf0ad3c, sn: 0xf0ad3c,
+    thalamus: 0x8fa3c8, hypothalamus: 0xe8736b
+  };
   function setColorMode(mode) {
     colorMode = mode;
+    Object.keys(FUNC_EXTRA).forEach(k => {
+      (groups[k] || []).forEach(m => {
+        if (!m.material.userData.origBase) m.material.userData.origBase = m.material.userData.base.color;
+        m.material.userData.base.color = mode === 'func' ? FUNC_EXTRA[k] : m.material.userData.origBase;
+      });
+    });
+    paint();
     cortexMeshes.forEach(m => {
       const g = m.geometry;
       if (!g.userData.tissue) return;
-      g.setAttribute('color', mode === 'tint' ? g.userData.tint : g.userData.tissue);
+      g.setAttribute('color', g.userData[mode] || g.userData.tissue);
       g.attributes.color.needsUpdate = true;
     });
     needsRender = true;
@@ -665,12 +732,12 @@ window.BRAIN = (function () {
     renderer.localClippingEnabled = true;
     ray = new T.Raycaster();
 
-    scene.add(new T.HemisphereLight(0xfff2ec, 0x2a1f24, 0.62));
-    const d1 = new T.DirectionalLight(0xfff6ee, 1.05); d1.position.set(2.4, 2.6, 2.2); scene.add(d1);
+    scene.add(new T.HemisphereLight(0xfff2ec, 0x2a1f24, 0.44));
+    const d1 = new T.DirectionalLight(0xfff6ee, 1.20); d1.position.set(2.4, 2.6, 2.2); scene.add(d1);
     const d2 = new T.DirectionalLight(0xc9dcea, 0.34); d2.position.set(-2.6, -0.4, -1.8); scene.add(d2);
-    const d3 = new T.DirectionalLight(0xffd9c4, 0.3); d3.position.set(0.6, -2.4, 1.4); scene.add(d3);
-    const rim = new T.DirectionalLight(0xe8c0d8, 0.34); rim.position.set(-1.2, 1.6, -2.6); scene.add(rim);
-    scene.add(new T.AmbientLight(0xffffff, 0.05));
+    const d3 = new T.DirectionalLight(0xffd9c4, 0.18); d3.position.set(0.6, -2.4, 1.4); scene.add(d3);
+    const rim = new T.DirectionalLight(0xe8c0d8, 0.26); rim.position.set(-1.2, 1.6, -2.6); scene.add(rim);
+    scene.add(new T.AmbientLight(0xffffff, 0.035));
 
     bind();
     resize();
@@ -732,6 +799,11 @@ window.BRAIN = (function () {
     init: init, resize: resize, view: view, focus: focus, setOverlay: setOverlay, setMarker: setMarker,
     hemi: setHemi, colorMode: setColorMode, centroid: centroidOf,
     layers: Object.keys(LAYERS),
+    funcLegend: Object.keys(FUNC).map(k => ({ key: k, label: FUNC[k][0], color: FUNC[k][1] }))
+      .concat([{ key: 'coord', label: 'Coordination & timing', color: 0x9b7fd4 },
+               { key: 'vital', label: 'Vital & arousal systems', color: 0xe8736b },
+               { key: 'relay', label: 'Thalamic relay', color: 0x8fa3c8 }]),
+    lobeLegend: Object.keys(LOBE_COL).map(k => ({ key: k, label: k[0].toUpperCase() + k.slice(1), color: LOBE_COL[k] })),
     layerFor(key) { return layerOf[key] || 'other'; },
     layerHidden(L) { return hiddenLayers.has(L); },
     setLayer(L, on) {
@@ -786,7 +858,7 @@ window.BRAIN = (function () {
       return { x: (p.x * 0.5 + 0.5) * r.width, y: (-p.y * 0.5 + 0.5) * r.height, z: p.z };
     },
     has(key) { return !failed && !!groups[key]; },
-    _cortexPoint: cortexPoint, _lobeOf: lobeOf,
+    _cortexPoint: cortexPoint, _lobeOf: lobeOf, _functionOf: functionOf, _funcKeys: Object.keys(FUNC),
     _stats() {
       let total = 0, vis = 0, hemi = 0, matHidden = 0;
       scene.traverse(o => {
