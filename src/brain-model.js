@@ -108,7 +108,7 @@ window.BRAIN = (function () {
   }
 
   const LOBE_COL = { frontal: 0xa07cc4, parietal: 0x3f93a4, temporal: 0xc08347, occipital: 0x5c6cae };
-  const TISSUE_HI = new T.Color(0xeda096), TISSUE_MID = new T.Color(0x9c4a4b), TISSUE_LO = new T.Color(0x150f10);
+  const TISSUE_HI = new T.Color(0xf3b2a6), TISSUE_MID = new T.Color(0xa85455), TISSUE_LO = new T.Color(0x1a1214);
   const mats = [];
 
   function gridSize() {
@@ -176,8 +176,9 @@ window.BRAIN = (function () {
           // two-stage ramp: sulcal line → rose flank → salmon crown
           const a = Math.min(1, t / 0.42), b = Math.max(0, (t - 0.40) / 0.60);
           c1.copy(TISSUE_LO).lerp(TISSUE_MID, a * a * (3 - 2 * a)).lerp(TISSUE_HI, b * b * (3 - 2 * b));
+          c1.convertSRGBToLinear();
           tissue.push(c1.r, c1.g, c1.b);
-          c2.copy(lc).multiplyScalar(e * 1.12);
+          c2.copy(lc).multiplyScalar(Math.min(1, e * 1.12)).convertSRGBToLinear();
           tint.push(Math.min(1, c2.r), Math.min(1, c2.g), Math.min(1, c2.b));
         }
         g.setAttribute('color', new T.Float32BufferAttribute(tissue, 3));
@@ -196,11 +197,11 @@ window.BRAIN = (function () {
     opt = opt || {};
     const Mat = opt.tissue ? T.MeshPhysicalMaterial : T.MeshStandardMaterial;
     const mat = new Mat({
-      color: color, roughness: opt.rough != null ? opt.rough : 0.55, metalness: 0.0,
+      color: new T.Color(color).convertSRGBToLinear(), roughness: opt.rough != null ? opt.rough : 0.55, metalness: 0.0,
       transparent: false, opacity: 1, side: T.DoubleSide,
       vertexColors: !!opt.tissue, emissive: new T.Color(0x000000)
     });
-    if (opt.tissue) { mat.clearcoat = 0.38; mat.clearcoatRoughness = 0.45; mat.sheen = 0.2; }
+    if (opt.tissue) { mat.clearcoat = 0.38; mat.clearcoatRoughness = 0.45; }
     mat.userData.base = { color: color, opacity: opt.opacity != null ? opt.opacity : 1 };
     mat.opacity = mat.userData.base.opacity;
     mats.push(mat);
@@ -336,7 +337,7 @@ window.BRAIN = (function () {
         const rid = 2 * Math.pow(Math.abs(Math.sin(y * 9.5 + z * 1.1 + noise(x * 3, y * 3, z * 3) * 0.4)), 0.55) - 1;
         const f = 1 + rid * 0.05;
         p.setXYZ(i, x * f, y * f, z * f);
-        c.copy(lo).lerp(hi, (rid + 1) / 2);
+        c.copy(lo).lerp(hi, (rid + 1) / 2).convertSRGBToLinear();
         col.push(c.r, c.g, c.b);
       }
       g.setAttribute('color', new T.Float32BufferAttribute(col, 3));
@@ -367,7 +368,7 @@ window.BRAIN = (function () {
   function paint() {
     mats.forEach(mt => {
       const b = mt.userData.base;
-      mt.color.setHex(b.color);
+      mt.color.setHex(b.color).convertSRGBToLinear();
       mt.emissive.setHex(0x000000);
       mt.opacity = b.opacity;
     });
@@ -383,7 +384,7 @@ window.BRAIN = (function () {
     }
     const hi = (key, strong) => {
       (groups[key] || []).forEach(m => {
-        m.material.emissive.setHex(strong ? 0x4a2742 : 0x261624);
+        m.material.emissive.setHex(strong ? 0x4a2742 : 0x261624).convertSRGBToLinear();
         if (!m.material.vertexColors) m.material.color.offsetHSL(0, strong ? 0.16 : 0.09, strong ? 0.09 : 0.05);
         m.material.opacity = Math.max(m.material.userData.base.opacity, strong ? 1 : 0.9);
       });
@@ -452,10 +453,10 @@ window.BRAIN = (function () {
       if (!p || !q) return;
       const mid = p.clone().add(q).multiplyScalar(0.5).multiplyScalar(1.2).add(new T.Vector3(0, 0.08, 0));
       const g = tubeGeo([[p.x, p.y, p.z], [mid.x, mid.y, mid.z], [q.x, q.y, q.z]], 0.014, 44, 9);
-      overlayGroup.add(new T.Mesh(g, new T.MeshStandardMaterial({ color: 0xc86bbd, emissive: 0x3d1638, roughness: 0.3 })));
+      overlayGroup.add(new T.Mesh(g, new T.MeshStandardMaterial({ color: new T.Color(0xc86bbd).convertSRGBToLinear(), emissive: new T.Color(0x3d1638).convertSRGBToLinear(), roughness: 0.3 })));
     });
     Object.keys(nodePts).forEach(id => {
-      const s = new T.Mesh(new T.SphereGeometry(0.036, 18, 14), new T.MeshStandardMaterial({ color: 0xf3dcef, emissive: 0x52234b, roughness: 0.25 }));
+      const s = new T.Mesh(new T.SphereGeometry(0.036, 18, 14), new T.MeshStandardMaterial({ color: new T.Color(0xf3dcef).convertSRGBToLinear(), emissive: new T.Color(0x52234b).convertSRGBToLinear(), roughness: 0.25 }));
       s.position.copy(nodePts[id]);
       overlayGroup.add(s);
     });
@@ -474,10 +475,10 @@ window.BRAIN = (function () {
     const hits = ray.intersectObjects(cortexMeshes.concat(groups.insula || [], groups.cingulate || []), false);
     const pt = hits.length ? hits[hits.length - 1].point.clone() : d.clone().multiplyScalar(0.8);
     markerGroup = new T.Group();
-    const dot = new T.Mesh(new T.SphereGeometry(0.032, 20, 14), new T.MeshStandardMaterial({ color: 0xf6e2f2, emissive: 0x7a3570, roughness: 0.2 }));
+    const dot = new T.Mesh(new T.SphereGeometry(0.032, 20, 14), new T.MeshStandardMaterial({ color: new T.Color(0xf6e2f2).convertSRGBToLinear(), emissive: new T.Color(0x7a3570).convertSRGBToLinear(), roughness: 0.2 }));
     dot.position.copy(pt.clone().multiplyScalar(1.015));
     markerGroup.add(dot);
-    const halo = new T.Mesh(new T.TorusGeometry(0.062, 0.008, 8, 28), new T.MeshStandardMaterial({ color: 0xc86bbd, emissive: 0x5d2455, roughness: 0.3, transparent: true, opacity: 0.85 }));
+    const halo = new T.Mesh(new T.TorusGeometry(0.062, 0.008, 8, 28), new T.MeshStandardMaterial({ color: new T.Color(0xc86bbd).convertSRGBToLinear(), emissive: new T.Color(0x5d2455).convertSRGBToLinear(), roughness: 0.3, transparent: true, opacity: 0.85 }));
     halo.position.copy(dot.position);
     halo.lookAt(dot.position.clone().multiplyScalar(2));
     markerGroup.add(halo);
@@ -604,18 +605,18 @@ window.BRAIN = (function () {
     scene = new T.Scene();
     cam = new T.PerspectiveCamera(34, 1, 0.1, 60);
     try {
-      renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+      renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
     } catch (err) { failed = true; opt.onFail && opt.onFail(err); return api; }
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
     renderer.outputEncoding = T.sRGBEncoding;
     renderer.toneMapping = T.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.06;
+    renderer.toneMappingExposure = 1.18;
     renderer.localClippingEnabled = true;
     ray = new T.Raycaster();
 
-    scene.add(new T.HemisphereLight(0xfff2ec, 0x2a1f24, 0.52));
-    const d1 = new T.DirectionalLight(0xfff6ee, 0.85); d1.position.set(2.4, 2.6, 2.2); scene.add(d1);
+    scene.add(new T.HemisphereLight(0xfff2ec, 0x2a1f24, 0.62));
+    const d1 = new T.DirectionalLight(0xfff6ee, 1.05); d1.position.set(2.4, 2.6, 2.2); scene.add(d1);
     const d2 = new T.DirectionalLight(0xc9dcea, 0.34); d2.position.set(-2.6, -0.4, -1.8); scene.add(d2);
     const d3 = new T.DirectionalLight(0xffd9c4, 0.3); d3.position.set(0.6, -2.4, 1.4); scene.add(d3);
     const rim = new T.DirectionalLight(0xe8c0d8, 0.34); rim.position.set(-1.2, 1.6, -2.6); scene.add(rim);
