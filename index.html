@@ -198,6 +198,63 @@ button,input,select,textarea{font:inherit;color:inherit}
   font-family:var(--mono);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:3px;
   padding:0 3px;color:var(--ink-2);
 }
+.vtools{position:absolute;top:12px;right:14px;display:flex;flex-direction:column;gap:5px;z-index:4}
+.vtools button{
+  width:30px;height:30px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+  border-radius:2px;cursor:pointer;font-size:14px;line-height:1;box-shadow:var(--shadow);
+}
+.vtools button:hover{border-color:var(--accent);color:var(--accent)}
+.layerbtn{
+  border:1px solid var(--line);background:var(--bg);color:var(--ink-2);cursor:pointer;border-radius:2px;
+  padding:3px 8px;font-size:11.5px;white-space:nowrap;
+}
+.layerbtn[aria-expanded="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.layerpanel{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:84px;z-index:6;width:min(320px,calc(100% - 24px));
+  background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:3px;
+}
+.layerpanel[hidden]{display:none}
+.layerpanel>header{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);
+  font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+}
+.layerpanel>header button{
+  margin-left:auto;border:1px solid var(--line-2);background:var(--bg);color:var(--ink-2);cursor:pointer;
+  border-radius:2px;padding:2px 7px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+}
+.layerpanel>header button:hover{border-color:var(--accent);color:var(--accent)}
+.layerpanel>p{
+  margin:0;padding:8px 12px 11px;border-top:1px solid var(--line);
+  font-family:var(--serif);font-size:12.5px;line-height:1.45;color:var(--ink-3);
+}
+.lrow{display:flex;align-items:center;gap:9px;padding:7px 12px;cursor:pointer;font-size:13px}
+.lrow:hover{background:var(--surface-2)}
+.lrow input{margin:0;accent-color:var(--accent)}
+.lrow b{font-weight:500;flex:1}
+.lrow span{font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.lrow.off b{color:var(--ink-3);text-decoration:line-through}
+.locbar{
+  position:absolute;top:0;left:0;right:0;z-index:7;display:flex;align-items:center;gap:10px;
+  padding:9px 14px;background:var(--accent);color:var(--accent-ink);
+  font-family:var(--serif);font-size:15px;
+}
+.locbar[hidden]{display:none}
+.locbar span{flex:1}
+.locbar button{
+  border:1px solid color-mix(in srgb,var(--accent-ink) 40%,transparent);background:transparent;color:var(--accent-ink);
+  cursor:pointer;border-radius:2px;padding:3px 9px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+}
+.locbar button:hover{background:color-mix(in srgb,var(--accent-ink) 18%,transparent)}
+.sheet-handle{display:none}
+.fsexit{
+  position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:40;display:none;
+  border:1px solid var(--line-2);background:var(--surface);color:var(--ink);cursor:pointer;
+  padding:8px 18px;border-radius:20px;box-shadow:var(--shadow);
+  font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+}
+.shell.immersive .topbar,.shell.immersive .rail,.shell.immersive .dossier{display:none}
+.shell.immersive .body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.shell.immersive~.fsexit,.shell.immersive .fsexit{display:block}
 .glfail{
   position:absolute;inset:auto 14px 74px 14px;max-width:520px;margin:0 auto;
   border:1px solid var(--line-2);background:var(--surface);padding:12px 14px;border-radius:3px;
@@ -245,6 +302,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 }
 .chip.acc{border-color:var(--accent-line);color:var(--accent);background:var(--accent-soft)}
 .chip.cy{border-color:var(--cyan);color:var(--cyan);background:var(--cyan-soft)}
+.chipbtn{
+  font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;
+  border:1px solid var(--line-2);background:var(--bg);color:var(--ink-2);padding:2px 7px;border-radius:2px;
+}
+.chipbtn:hover{border-color:var(--accent);color:var(--accent)}
+.chipbtn.on{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
 .dhead h2{font-size:27px;line-height:1.12}
 .dbody>.sect{animation:rise .32s cubic-bezier(.2,.7,.3,1) both}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -360,7 +423,21 @@ textarea.notes{
   .dossier{border-left:0;border-top:1px solid var(--line)}
   .hint,.keys{display:none}
   .instr{left:8px;right:8px;bottom:10px;transform:none;max-width:none}
-  .cell{padding:6px 10px}
+  .layerpanel{bottom:78px;left:8px;right:8px;transform:none;width:auto}
+  .vtools{top:10px;right:10px}
+  .sheet-handle{
+    display:block;width:100%;border:0;background:var(--surface);cursor:grab;
+    padding:7px 0 5px;touch-action:none;border-bottom:1px solid var(--line);
+  }
+  .sheet-handle i{display:block;width:42px;height:4px;border-radius:2px;background:var(--line-2);margin:0 auto}
+  .sheet-handle:active{cursor:grabbing}
+  .body{grid-template-rows:minmax(180px,1fr) var(--sheet,52vh)}
+  .shell.sheet-peek{--sheet:78px}
+  .shell.sheet-hidden{--sheet:0px}
+  .shell.sheet-hidden .dossier{display:none}
+  .shell.sheet-hidden~.fsexit{display:block}
+  .cell{padding:5px 9px}
+  .cell>span{font-size:8.5px;letter-spacing:.1em}
   .cell input[type=range]{width:86px}
   .readout .now{font-size:18px}
   .readout{max-width:70%}
@@ -372,6 +449,9 @@ textarea.notes{
   .grp>summary{padding:12px 14px}
   .views button{padding:6px 8px}
   .chk{padding:2px 0}
+}
+@media (max-width:960px) and (max-height:700px){
+  .shell{--sheet:46vh}
 }
 @media (max-width:520px){
   .brand h1{font-size:16px}
@@ -431,6 +511,16 @@ textarea.notes{
         </div>
       </div>
       <div class="hint">drag rotate &middot; scroll zoom<br>click a structure &middot; double-click to frame it</div>
+      <div class="vtools">
+        <button id="fs" title="Full-screen model (f)" aria-label="Full-screen model">⤢</button>
+        <button id="shot" title="Save this view as PNG" aria-label="Save view as PNG">◉</button>
+        <button id="reset" title="Reset everything (r)" aria-label="Reset view">↺</button>
+      </div>
+      <div class="locbar" id="locbar" hidden>
+        <span id="loc-prompt"></span>
+        <button id="loc-skip">Skip</button>
+        <button id="loc-quit">End round</button>
+      </div>
       <svg class="leads" id="leads"></svg>
       <div id="labels"></div>
       <div class="tip" id="tip"></div>
@@ -441,6 +531,11 @@ textarea.notes{
         <div><i style="background:#5c6cae"></i>Occipital</div>
       </div>
       <div class="keys"><kbd>&larr;&rarr;</kbd> rotate &middot; <kbd>+</kbd><kbd>&minus;</kbd> zoom<br><kbd>/</kbd> search &middot; <kbd>i</kbd> isolate &middot; <kbd>esc</kbd> clear</div>
+      <div class="layerpanel" id="layerpanel" hidden>
+        <header>Tissue layers<button id="layerall">Show all</button></header>
+        <div id="layerlist"></div>
+        <p>Hide the cortex to expose the deep grey, tracts and ventricles underneath. Selecting a hidden structure brings its layer back.</p>
+      </div>
       <div class="boot" id="boot"><div class="boot-in">
         <span class="spark"></span>
         <i id="boot-pct">0%</i>
@@ -487,6 +582,9 @@ textarea.notes{
             <button data-s="tint" aria-pressed="false">Lobes</button>
           </div>
         </div>
+        <div class="cell"><span>Layers</span>
+          <button class="layerbtn" id="layerbtn" aria-expanded="false">Show / hide tissue</button>
+        </div>
         <div class="cell"><span>Display</span>
           <label class="chk"><input id="lblchk" type="checkbox" checked> Pins</label>
           <label class="chk"><input id="isochk" type="checkbox"> Isolate</label>
@@ -495,6 +593,7 @@ textarea.notes{
     </main>
 
     <aside class="dossier" id="dossier">
+      <button class="sheet-handle" id="sheet" aria-label="Collapse or expand the details panel"><i></i></button>
       <div class="dhead">
         <div class="eyebrow" id="d-eyebrow"></div>
         <h2 id="d-name">—</h2>
@@ -506,6 +605,7 @@ textarea.notes{
     </aside>
   </div>
 
+  <button class="fsexit" id="fsexit" hidden>Details</button>
   <section class="pane" id="pane-learn"></section>
   <section class="pane" id="pane-test"></section>
 </div>

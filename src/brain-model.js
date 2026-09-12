@@ -42,20 +42,62 @@ window.BRAIN = (function () {
     return 'parietal';
   }
 
-  // Folding field: returns [displacement, crown-to-sulcus factor 0..1]
-  function fold(px, py, pz) {
-    // anisotropy elongates folds antero-posteriorly, as real gyri do
-    const wx = px * 8.4, wy = py * 10.0, wz = pz * 3.2;
-    const w = fbm2(wx * 0.42 + 31, wy * 0.42, wz * 0.42) * 0.55;   // domain warp
-    const n1 = fbm2(wx + w, wy + w * 0.7, wz - w);
-    const n2 = fbm2(px * 17.0 + 9, py * 19.0, pz * 8.0);
-    const n3 = noise(px * 33, py * 33, pz * 33);
-    // narrow deep valleys along the zero-set of n1, broad crowns between
-    const ridge = 2 * Math.pow(Math.abs(n1), 0.48) - 1;            // -1 sulcus … +1 crown
-    const fine = 2 * Math.pow(Math.abs(n2), 0.7) - 1;
-    const d = ridge * 0.064 + fine * 0.0095 + n3 * 0.0015;
-    const t = Math.max(0, Math.min(1, (ridge * 0.88 + fine * 0.12 + 1) / 2));
-    return [d, t];
+  /* Sulcal atlas — each sulcus is a polyline in the (z, y) lateral projection
+     with a depth, a width and the surface it belongs to. Drawing the named
+     sulci where they actually run, and letting the tissue between them stand
+     proud, is what makes the surface read as a brain rather than as noise. */
+  const SULCI = [
+    // lateral convexity
+    { n: 'lateral (Sylvian)', f: 'lat', d: 0.072, w: 0.046, p: [[0.54, -0.17], [0.32, -0.13], [0.06, -0.06], [-0.20, 0.03], [-0.40, 0.11]] },
+    { n: 'central',           f: 'lat', d: 0.058, w: 0.036, p: [[-0.10, 0.58], [0.00, 0.40], [0.09, 0.21], [0.17, 0.03]] },
+    { n: 'precentral',        f: 'lat', d: 0.044, w: 0.032, p: [[0.06, 0.56], [0.17, 0.37], [0.26, 0.19], [0.32, 0.05]] },
+    { n: 'postcentral',       f: 'lat', d: 0.054, w: 0.028, p: [[-0.26, 0.55], [-0.17, 0.37], [-0.09, 0.19], [-0.03, 0.05]] },
+    { n: 'superior frontal',  f: 'lat', d: 0.038, w: 0.031, p: [[0.20, 0.43], [0.42, 0.41], [0.62, 0.35], [0.76, 0.25]] },
+    { n: 'inferior frontal',  f: 'lat', d: 0.036, w: 0.030, p: [[0.22, 0.18], [0.44, 0.16], [0.63, 0.12], [0.75, 0.05]] },
+    { n: 'superior temporal', f: 'lat', d: 0.050, w: 0.036, p: [[0.46, -0.31], [0.24, -0.27], [0.00, -0.21], [-0.25, -0.12], [-0.42, -0.04]] },
+    { n: 'inferior temporal', f: 'lat', d: 0.036, w: 0.031, p: [[0.42, -0.43], [0.20, -0.41], [-0.04, -0.35], [-0.27, -0.27]] },
+    { n: 'intraparietal',     f: 'lat', d: 0.044, w: 0.033, p: [[-0.14, 0.37], [-0.34, 0.33], [-0.52, 0.25], [-0.64, 0.15]] },
+    { n: 'lateral occipital', f: 'lat', d: 0.034, w: 0.030, p: [[-0.60, 0.07], [-0.70, -0.02], [-0.75, -0.11]] },
+    // medial wall
+    { n: 'cingulate',         f: 'med', d: 0.046, w: 0.036, p: [[0.44, 0.06], [0.32, 0.30], [0.06, 0.43], [-0.26, 0.41], [-0.46, 0.29]] },
+    { n: 'parieto-occipital', f: 'med', d: 0.054, w: 0.034, p: [[-0.50, 0.42], [-0.60, 0.22], [-0.65, 0.05]] },
+    { n: 'calcarine',         f: 'med', d: 0.048, w: 0.034, p: [[-0.76, 0.03], [-0.64, -0.01], [-0.50, -0.02]] },
+    // basal surface
+    { n: 'collateral',        f: 'inf', d: 0.040, w: 0.032, p: [[0.36, -0.43], [0.10, -0.45], [-0.16, -0.41]] },
+    { n: 'olfactory',         f: 'inf', d: 0.034, w: 0.030, p: [[0.74, -0.35], [0.56, -0.37]] }
+  ];
+
+  function segDist(pz, py, a, b) {
+    const vz = b[0] - a[0], vy = b[1] - a[1];
+    const wz = pz - a[0], wy = py - a[1];
+    const L = vz * vz + vy * vy;
+    let t = L > 0 ? (wz * vz + wy * vy) / L : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const dz = wz - vz * t, dy = wy - vy * t;
+    return Math.sqrt(dz * dz + dy * dy);
+  }
+  const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+  function sulcalDepth(ex, ey, ez) {
+    let depth = 0;
+    for (let i = 0; i < SULCI.length; i++) {
+      const S = SULCI[i];
+      const gate = S.f === 'lat' ? sstep(0.20, 0.40, ex)
+                 : S.f === 'med' ? 1 - sstep(0.05, 0.20, ex)
+                 : 1 - sstep(-0.42, -0.25, ey);
+      if (gate < 0.02) continue;
+      let dmin = 9;
+      for (let k = 0; k < S.p.length - 1; k++) {
+        const d = segDist(ez, ey, S.p[k], S.p[k + 1]);
+        if (d < dmin) dmin = d;
+      }
+      // wander the sulcus off its guide line, and vary its depth along its length
+      dmin = Math.max(0, dmin + fbm2(ez * 6.5 + i * 4.7, ey * 6.5 + i * 2.3, ex * 5.0) * 0.016);
+      const along = 0.82 + 0.30 * Math.max(0, Math.min(1, (fbm2(ez * 3.4 + i, ey * 3.4, 0.5) + 1) / 2));
+      const r = dmin / S.w;
+      if (r < 3) depth += S.d * along * Math.exp(-r * r) * gate;
+    }
+    return Math.min(depth * 0.9, 0.088);
   }
 
   function cortexPoint(px, py, pz) {
@@ -64,48 +106,55 @@ window.BRAIN = (function () {
     const wf = 1 - 0.30 * Math.pow(Math.max(0, z), 1.7) - 0.46 * Math.pow(Math.max(0, -z - 0.42), 1.5);
     const hf = 1 - 0.20 * Math.pow(Math.max(0, z - 0.28), 1.4) - 0.30 * Math.pow(Math.max(0, -z - 0.40), 1.4);
     let ex = (x >= 0 ? x * 0.715 : x * 0.05) * wf;
-    let ey = y * 0.70 * hf;
-    let ez = z * 0.97;
+    let ey = y * 0.735 * hf;
+    let ez = z * 1.0;
 
-    // flatter vertex, so the dorsal surface is a dome rather than a ball
-    if (ey > 0.40) ey = 0.40 + (ey - 0.40) * 0.88;
+    if (ey > 0.40) ey = 0.40 + (ey - 0.40) * 0.88;          // flatter vault
 
-    // Sylvian fissure: the temporal lobe is pulled back under the frontal lobe,
-    // which creates the overhanging operculum and a genuinely deep cleft
+    // Sylvian fissure: the temporal lobe is drawn back under the frontal lobe,
+    // which is what creates the overhanging operculum and a real cleft
     const dy = ey - sylvian(ez);
     if (dy < 0.04) {
       const w2 = Math.min(1, Math.max(0, (0.04 - dy) / 0.12));
-      const k = 1 - 0.30 * sm(w2);
+      const k = 1 - 0.30 * sstep(0, 1, w2);
       ez *= k;
-      ex *= 1 + 0.05 * sm(w2);                       // temporal lobe bulges laterally
-      if (dy < 0) ey -= 0.012 * sm(w2);
+      ex *= 1 + 0.05 * sstep(0, 1, w2);
+      if (dy < 0) ey -= 0.012 * sstep(0, 1, w2);
     }
-    // flat ventral surface for the temporal lobe
-    if (ey < -0.38) ey = -0.38 + (ey + 0.38) * 0.38;
-    // orbital surface sits slightly higher, over the orbital plate
-    if (ez > 0.40 && ey < -0.20) ey += (0.20 + ey) * -0.45 * Math.min(1, (ez - 0.40) * 3);
-    // tentorial notch: the cerebrum lifts posteriorly to seat the cerebellum
-    if (ez < -0.34) {
+    if (ey < -0.38) ey = -0.38 + (ey + 0.38) * 0.38;        // flat temporal base
+    if (ez > 0.40 && ey < -0.20) ey += (0.20 + ey) * -0.45 * Math.min(1, (ez - 0.40) * 3);  // orbital surface
+    if (ez < -0.34) {                                        // tentorial notch
       const floor = Math.min(-0.10, -0.38 + 0.48 * (-ez - 0.34));
       if (ey < floor) ey = floor;
     }
-    // occipital pole pinches
-    if (ez < -0.78) { ey *= 1 - 0.22 * (-ez - 0.78) / 0.2; }
+    if (ez < -0.78) ey *= 1 - 0.22 * (-ez - 0.78) / 0.2;     // occipital pole pinch
 
-    // the three landmark sulci a reader looks for first
-    const g = (d, w) => Math.exp(-(d * d) / (w * w));
-    let crease = 0;
-    const syl = sylvian(ez);
-    if (ey > syl - 0.03) crease += g(ez - (0.22 - 0.45 * ey), 0.042) * 0.050;      // central sulcus
-    if (ez > -0.52 && ez < 0.55) crease += g(ey - (syl - 0.135), 0.040) * 0.038;   // superior temporal
-    if (ez < 0.05 && ez > -0.72 && ey > 0.05) crease += g(ey - 0.30, 0.044) * 0.030; // intraparietal
-    crease += g(ey - syl, 0.034) * 0.048;                                          // Sylvian proper
-
-    const f = fold(px, py, pz);
+    const sd = sulcalDepth(ex, ey, ez);
+    // gentle gyral undulation between the sulci, plus a little skin texture
+    const gy = fbm2(px * 4.6 + 11, py * 5.8 + 3, pz * 3.0 + 7) * 0.024
+             + fbm2(px * 9.5 + 2, py * 11.0, pz * 6.0) * 0.013
+             + fbm2(px * 19.0 + 5, py * 21.0, pz * 13.0) * 0.005;
     const len = Math.hypot(ex, ey, ez) || 1;
-    const s = 1 + (f[0] - crease) / len;
-    return [0.045 + ex * s, ey * s, ez * s, Math.max(0, f[1] - crease * 5.5)];
+    const s = 1 + (gy - sd) / len;
+    // shading weight: 0 in the depth of a sulcus, 1 on a gyral crown
+    let t = 1 - Math.pow(Math.min(1, sd / 0.062), 1.15);
+    t *= 0.88 + 0.12 * Math.max(0, Math.min(1, (gy + 0.025) / 0.05));
+    return [0.052 + ex * s, ey * s, ez * s, Math.max(0, Math.min(1, t))];
   }
+
+  const LAYERS = {
+    cortex: ['frontal', 'parietal', 'temporal', 'occipital'],
+    paralimbic: ['insula', 'cingulate'],
+    deep: ['thalamus', 'hypothalamus', 'caudate', 'putamen', 'pallidum', 'accumbens', 'amygdala', 'hippocampus', 'basalforebrain'],
+    white: ['cc', 'fornix', 'arcuate', 'uncinate', 'internal_capsule'],
+    ventricles: ['ventricles'],
+    stem: ['midbrain', 'pons', 'medulla', 'sn', 'raphe', 'lc', 'chiasm', 'olf'],
+    cerebellum: ['cerebellum'],
+    endocrine: ['pituitary', 'pineal']
+  };
+  const layerOf = {};
+  Object.keys(LAYERS).forEach(L => LAYERS[L].forEach(k => { layerOf[k] = L; }));
+  const hiddenLayers = new Set();
 
   const LOBE_COL = { frontal: 0xa07cc4, parietal: 0x3f93a4, temporal: 0xc08347, occipital: 0x5c6cae };
   const TISSUE_HI = new T.Color(0xf3b2a6), TISSUE_MID = new T.Color(0xa85455), TISSUE_LO = new T.Color(0x1a1214);
@@ -201,13 +250,14 @@ window.BRAIN = (function () {
       transparent: false, opacity: 1, side: T.DoubleSide,
       vertexColors: !!opt.tissue, emissive: new T.Color(0x000000)
     });
-    if (opt.tissue) { mat.clearcoat = 0.38; mat.clearcoatRoughness = 0.45; }
+    if (opt.tissue) { mat.clearcoat = 0.24; mat.clearcoatRoughness = 0.55; }
     mat.userData.base = { color: color, opacity: opt.opacity != null ? opt.opacity : 1 };
     mat.opacity = mat.userData.base.opacity;
     mats.push(mat);
     const m = new T.Mesh(geo, mat);
     m.userData.key = opt.key;
     scene.add(m);
+    m.userData.layer = layerOf[opt.key] || 'other';
     if (opt.key) {
       (groups[opt.key] = groups[opt.key] || []).push(m);
       if (opt.pick !== false) pickables.push(m);
@@ -334,8 +384,8 @@ window.BRAIN = (function () {
       const hi = new T.Color(0xd2888a), lo = new T.Color(0xf2e0d4), c = new T.Color();
       for (let i = 0; i < p.count; i++) {
         const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-        const rid = 2 * Math.pow(Math.abs(Math.sin(y * 9.5 + z * 1.1 + noise(x * 3, y * 3, z * 3) * 0.4)), 0.55) - 1;
-        const f = 1 + rid * 0.05;
+        const rid = 2 * Math.pow(Math.abs(Math.sin(y * 17 + z * 1.6 + noise(x * 3, y * 3, z * 3) * 0.35)), 0.5) - 1;
+        const f = 1 + rid * 0.038;
         p.setXYZ(i, x * f, y * f, z * f);
         c.copy(lo).lerp(hi, (rid + 1) / 2).convertSRGBToLinear();
         col.push(c.r, c.g, c.b);
@@ -533,7 +583,7 @@ window.BRAIN = (function () {
     const ce = Math.cos(rot.el);
     cam.position.set(target.x + dist * ce * Math.cos(rot.az), target.y + dist * Math.sin(rot.el), target.z + dist * ce * Math.sin(rot.az));
     cam.lookAt(target);
-    scene.traverse(o => { if (o.isMesh) o.visible = o.material.visible !== false && !o.userData.hemiHidden; });
+    scene.traverse(o => { if (o.isMesh) o.visible = o.material.visible !== false && !o.userData.hemiHidden && !hiddenLayers.has(o.userData.layer); });
   }
 
   /* ── interaction ────────────────────────────────────────────────── */
@@ -670,7 +720,10 @@ window.BRAIN = (function () {
     renderer.setSize(w, h, false);
     cam.aspect = w / h; cam.updateProjectionMatrix();
     const prev = fit;
-    fit = Math.max(0.88, Math.min(2.6, 1.16 / cam.aspect));
+    const halfFov = Math.tan(cam.fov * Math.PI / 360);
+    const needH = 0.70 / halfFov;                 // fit the height
+    const needW = 1.05 / (halfFov * cam.aspect);  // fit the length
+    fit = Math.max(0.72, Math.min(2.6, Math.max(needH, needW) * 1.16 / 3.0));
     if (prev !== fit) { want.dist *= fit / prev; dist *= fit / prev; }
     needsRender = true;
   }
@@ -678,6 +731,32 @@ window.BRAIN = (function () {
   const api = {
     init: init, resize: resize, view: view, focus: focus, setOverlay: setOverlay, setMarker: setMarker,
     hemi: setHemi, colorMode: setColorMode, centroid: centroidOf,
+    layers: Object.keys(LAYERS),
+    layerFor(key) { return layerOf[key] || 'other'; },
+    layerHidden(L) { return hiddenLayers.has(L); },
+    setLayer(L, on) {
+      if (on) hiddenLayers.delete(L); else hiddenLayers.add(L);
+      needsRender = true;
+    },
+    showAllLayers() { hiddenLayers.clear(); needsRender = true; },
+    snapshot() {
+      if (failed) return null;
+      renderer.render(scene, cam);
+      try { return canvas.toDataURL('image/png'); } catch (_) { return null; }
+    },
+    reset() {
+      if (failed) return;
+      hiddenLayers.clear();
+      selected = null; hovered = null; isolateOn = false;
+      renderer.clippingPlanes = []; lastClip = null;
+      setHemi('both');
+      peelValue = 1;
+      cortexMeshes.forEach(m => { m.material.userData.base.opacity = 1; });
+      paint();
+      want.az = 0.72; want.el = 0.17; want.dist = 3.0 * fit; want.target.set(0, -0.04, 0);
+      spinning = true; lastInput = performance.now();
+      needsRender = true;
+    },
     failed() { return failed; },
     isReady() { return ready; },
     select(key) { if (failed) return; selected = key || null; paint(); },

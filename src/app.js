@@ -210,8 +210,17 @@
     if (e.ba && e.ba !== '—') eb.appendChild(el('span', 'chip', e.ba));
     if (e.parent) {
       const p = A.get(e.parent);
-      const c = el('span', 'chip cy', 'in ' + p.name);
-      eb.appendChild(c);
+      eb.appendChild(el('span', 'chip cy', 'in ' + p.name));
+    }
+    if (e.mesh) {
+      const iso = el('button', 'chipbtn' + ($('isochk').checked ? ' on' : ''), $('isochk').checked ? 'Showing only this' : 'Show only this');
+      iso.onclick = () => {
+        const on = !$('isochk').checked;
+        $('isochk').checked = on;
+        B.isolate(on);
+        openEntry(e.id, true, false);
+      };
+      eb.appendChild(iso);
     }
     $('d-name').textContent = e.name;
     $('d-latin').textContent = e.latin && e.latin !== '—' ? e.latin : '';
@@ -255,6 +264,7 @@
     pins = [];
     markerPoint = null;
     if (e.mesh && B.has(e.mesh)) {
+      ensureLayerVisible(e.mesh);
       B.select(e.mesh);
       if (e.marker) {
         markerPoint = B.setMarker(e.marker);
@@ -397,7 +407,7 @@
     const w = el('div', 'pane-wrap');
     w.appendChild(el('h2', null, 'Viva'));
     const ans = Object.keys(store.state.quiz.answered).length;
-    w.appendChild(el('p', 'lede', `Forty questions on localisation, circuitry and measurement — written the way a viva examiner asks them, with the reasoning given in full after each answer. Answered ${ans} of ${A.quiz.length}, ${store.state.quiz.correct} correct.`));
+    w.appendChild(el('p', 'lede', `Forty questions on localisation, circuitry and measurement — written the way a viva examiner asks them, with the reasoning given in full after each answer. Answered ${ans} of ${A.quiz.length}, ${store.state.quiz.correct} correct. A locate-on-model round at the bottom tests whether you can actually find the structures.`));
     const q = A.quiz[qIndex % A.quiz.length];
     const card = el('div', 'quiz');
     card.appendChild(el('div', 'qmeta', `Question ${(qIndex % A.quiz.length) + 1} of ${A.quiz.length}`));
@@ -430,11 +440,155 @@
     card.appendChild(opts);
     w.appendChild(card);
     const reset = el('div', 'linkrow');
+    const lb = el('button', null, 'Start a locate-on-model round →');
+    lb.onclick = startLocate;
+    reset.appendChild(lb);
     const rb = el('button', null, 'Reset score');
     rb.onclick = () => { store.reset(); qIndex = 0; renderTest(); };
     reset.appendChild(rb);
     w.appendChild(reset);
     host.appendChild(w);
+  }
+
+  /* ── tissue layers ───────────────────────────────────────────────── */
+  const LAYER_LABEL = {
+    cortex: ['Cortical surface', 'the outer skin'],
+    paralimbic: ['Insula & cingulate', 'buried cortex'],
+    deep: ['Deep grey nuclei', 'thalamus, basal ganglia, MTL'],
+    white: ['White-matter tracts', 'callosum, fornix, arcuate'],
+    ventricles: ['Ventricles & CSF', 'fluid spaces'],
+    stem: ['Brainstem & modulators', 'midbrain to medulla'],
+    cerebellum: ['Cerebellum', 'hemispheres & vermis'],
+    endocrine: ['Pituitary & pineal', 'neuroendocrine']
+  };
+
+  function renderLayers() {
+    const host = $('layerlist');
+    host.innerHTML = '';
+    B.layers.forEach(L => {
+      const on = !B.layerHidden(L);
+      const row = el('label', 'lrow' + (on ? '' : ' off'));
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = on;
+      cb.id = 'layer-' + L;
+      cb.onchange = () => { B.setLayer(L, cb.checked); renderLayers(); };
+      row.appendChild(cb);
+      row.appendChild(el('b', null, LAYER_LABEL[L] ? LAYER_LABEL[L][0] : L));
+      row.appendChild(el('span', null, LAYER_LABEL[L] ? LAYER_LABEL[L][1] : ''));
+      host.appendChild(row);
+    });
+  }
+
+  function ensureLayerVisible(key) {
+    if (!key) return;
+    const L = B.layerFor(key);
+    if (B.layerHidden(L)) { B.setLayer(L, true); renderLayers(); }
+  }
+
+  /* ── immersive mode & the phone bottom sheet ─────────────────────── */
+  let sheet = 'open';
+  function setSheet(state) {
+    sheet = state;
+    const sh = document.querySelector('.shell');
+    sh.classList.toggle('sheet-peek', state === 'peek');
+    sh.classList.toggle('sheet-hidden', state === 'hidden');
+    $('fsexit').hidden = !(state === 'hidden' || sh.classList.contains('immersive'));
+    setTimeout(() => { B.resize(); drawLabels(); }, 260);
+  }
+  function setImmersive(on) {
+    const sh = document.querySelector('.shell');
+    sh.classList.toggle('immersive', on);
+    $('fsexit').hidden = !on && sheet !== 'hidden';
+    $('fsexit').textContent = on ? 'Show panels' : 'Details';
+    setTimeout(() => { B.resize(); drawLabels(); }, 260);
+  }
+
+  function bindSheet() {
+    const handle = $('sheet');
+    let y0 = 0, dragging = false;
+    handle.addEventListener('pointerdown', e => {
+      dragging = true; y0 = e.clientY;
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    handle.addEventListener('pointerup', e => {
+      if (!dragging) return;
+      dragging = false;
+      const dy = e.clientY - y0;
+      const order = ['open', 'peek', 'hidden'];
+      let i = order.indexOf(sheet);
+      if (dy > 26) i = Math.min(2, i + 1);
+      else if (dy < -26) i = Math.max(0, i - 1);
+      else i = sheet === 'open' ? 1 : 0;          // a tap toggles
+      setSheet(order[i]);
+    });
+  }
+
+  /* ── locate-on-model round ───────────────────────────────────────── */
+  let locate = null;
+  const locatable = () => A.entries.filter(e => e.mesh && !e.parent && (B.failed() || B.has(e.mesh)));
+
+  function startLocate() {
+    const pool = locatable();
+    if (B.failed() || !pool.length) {
+      $('locbar').hidden = false;
+      $('loc-prompt').textContent = 'The 3D model is unavailable in this browser, so there is nothing to locate.';
+      locate = { queue: [], i: 0, right: 0, done: true };
+      return;
+    }
+    locate = { queue: pool.slice().sort(() => Math.random() - 0.5).slice(0, 12), i: 0, right: 0, tries: 0 };
+    setMode('explore');
+    B.showAllLayers();
+    renderLayers();
+    nextLocate();
+  }
+  function nextLocate() {
+    if (!locate) return;
+    if (locate.i >= locate.queue.length) {
+      $('loc-prompt').innerHTML = `Round complete — <b>${locate.right} of ${locate.queue.length}</b> found first time.`;
+      locate.done = true;
+      return;
+    }
+    locate.tries = 0;
+    const t = locate.queue[locate.i];
+    $('locbar').hidden = false;
+    $('loc-prompt').innerHTML = `Find and click: <b>${esc(t.name)}</b>  <em style="opacity:.75">${locate.i + 1} / ${locate.queue.length}</em>`;
+  }
+  function endLocate() {
+    locate = null;
+    $('locbar').hidden = true;
+  }
+  function locateGuess(key) {
+    if (!locate || locate.done) return false;
+    const t = locate.queue[locate.i];
+    const hit = key === t.mesh || (meshToEntry[key] && meshToEntry[key] === t.id);
+    if (hit) {
+      if (locate.tries === 0) locate.right++;
+      locate.i++;
+      $('loc-prompt').innerHTML = `Correct — <b>${esc(t.name)}</b>.`;
+      setTimeout(nextLocate, 900);
+    } else {
+      locate.tries++;
+      const got = meshToEntry[key] ? A.get(meshToEntry[key]).name : 'nothing';
+      $('loc-prompt').innerHTML = `That is <b>${esc(got)}</b> — try again for <b>${esc(t.name)}</b>.`;
+    }
+    return true;
+  }
+
+  /* ── save the current view ───────────────────────────────────────── */
+  async function saveShot() {
+    const data = B.snapshot();
+    if (!data) return;
+    const name = 'encephalon-' + (current ? current.id : 'view') + '.png';
+    try {
+      if (window.claude && window.claude.use) {
+        const d = await window.claude.use('downloads');
+        if (d) { await d.save({ filename: name, data: data }); return; }
+      }
+    } catch (_) {}
+    const a2 = document.createElement('a');
+    a2.href = data; a2.download = name;
+    document.body.appendChild(a2); a2.click(); a2.remove();
   }
 
   /* ── modes & controls ────────────────────────────────────────────── */
@@ -486,6 +640,9 @@
     if (ev.key === ']') step(1);
     if (ev.key === ' ') { ev.preventDefault(); B.spin(!B.spinning()); }
     if (ev.key === 'i') { const c = $('isochk'); c.checked = !c.checked; B.isolate(c.checked); }
+    if (ev.key === 'f') setImmersive(!document.querySelector('.shell').classList.contains('immersive'));
+    if (ev.key === 'l') $('layerbtn').click();
+    if (ev.key === 'c') { const c = $('layer-cortex'); if (c) { c.checked = !c.checked; c.onchange(); } }
   }
 
   function boot() {
@@ -520,6 +677,7 @@
         $('ro-now').textContent = A.get(id).name;
       },
       onPick(key) {
+        if (locate && locateGuess(key)) return;
         if (!key) return;
         const id = meshToEntry[key];
         if (id) { userOverlay = $('overlay').value = 'none'; openEntry(id, false, false); }
@@ -556,6 +714,34 @@
         $('legend').classList.toggle('on', b.dataset.s === 'tint');
       };
     });
+    $('layerbtn').onclick = () => {
+      const p = $('layerpanel');
+      p.hidden = !p.hidden;
+      $('layerbtn').setAttribute('aria-expanded', p.hidden ? 'false' : 'true');
+      if (!p.hidden) renderLayers();
+    };
+    $('layerall').onclick = () => { B.showAllLayers(); renderLayers(); };
+    $('fs').onclick = () => setImmersive(!document.querySelector('.shell').classList.contains('immersive'));
+    $('fsexit').onclick = () => {
+      const sh = document.querySelector('.shell');
+      if (sh.classList.contains('immersive')) setImmersive(false);
+      if (sheet === 'hidden') setSheet('open');
+    };
+    $('shot').onclick = saveShot;
+    $('reset').onclick = () => {
+      B.reset();
+      renderLayers();
+      $('peel').value = 100; $('plane').value = 'none'; $('depth').value = 0;
+      $('overlay').value = 'none'; userOverlay = 'none';
+      $('isochk').checked = false;
+      endLocate();
+      if (current) showOn3D(current, false);
+    };
+    $('loc-skip').onclick = () => { if (locate) { locate.i++; nextLocate(); } };
+    $('loc-quit').onclick = endLocate;
+    bindSheet();
+    renderLayers();
+    if (innerWidth <= 960 && innerHeight < 700) setSheet('peek');
     $('prev').onclick = () => step(-1);
     $('next').onclick = () => step(1);
     $('spin').onclick = () => B.spin(!B.spinning());
